@@ -5,7 +5,9 @@ from torch.nn.utils.rnn import pad_sequence
 from compound_encode import AtomEmbedding, BondEmbedding, BondFloatRBF, BondAngleFloatRBF, DistanceFloatRBF
 from torch_geometric.nn import TransformerConv, global_max_pool as gmp,global_mean_pool, GATConv
 import os
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 class LightAttention(nn.Module):
     def __init__(self, cfg, output_dim=2, kernel_size=9, n_layers=6):
 

@@ -1,3 +1,5 @@
 from rdkit import Chem
-mol = Chem.MolFromSmiles('C1CCC1C2CC2')
+from rdkit.Chem import AllChem
+from rdkit.Chem import rdchem
+mol = Chem.MolFromSmiles('CC(C(=O)NC)N(C)CC1=C(C=C2C(=C1)C(=NC=N2)NC3=C(C(=CC=C3)Cl)F)OC')
 print(Chem.MolToMolBlock(mol))
