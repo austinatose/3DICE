@@ -1,7 +1,7 @@
 import re
 
-input_path = "data/Davis-KIBA/kiba.txt"
-output_path = "targets.csv"
+input_path = "../data/Davis-KIBA/kiba.txt"
+output_path = "../targets.csv"
 
 # Regex for UniProt accessions (Swiss-Prot/TrEMBL primary):
 UNIPROT_RE = re.compile(r"""
@@ -32,5 +32,3 @@ with open(input_path, "r") as f:
 with open(output_path, "w") as out_f:
     for uid in sorted(uids):
         out_f.write(f"{uid}\n")
-
-print(f"Wrote {len(uids)} unique UniProt IDs to {output_path}")
