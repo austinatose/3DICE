@@ -51,6 +51,6 @@ if "X" in seq:
     print(f"[warn] sequence contains 'X' (unknown residues). Consider extending CANON_MAP if frequent.")
 
 rep = get_encoder_output(model, alphabet, coords)  # may allocate on MPS
+print(rep.shape)
 
-# save embeddings
-torch.save(rep, "test.pt")
+# the error is normal, i am not predicting contacts anyway
