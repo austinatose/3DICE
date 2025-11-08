@@ -14,15 +14,19 @@ positive_set = set(
     zip(valid_pairs_df['drugbank_id'], valid_pairs_df['uniprot_id'], np.ones(len(valid_pairs_df), dtype=bool))
 )
 
+print(f"Number of positive pairs: {len(positive_set)}")
+
 negative_set = set()
 
 while len(negative_set) < len(positive_set):
-    drug = random.choice(list(positive_set))
-    target = random.choice(list(positive_set))
-    if drug[0] != target[1]:
-        neg_pair = (drug[0], target[1], False)
-        if neg_pair not in positive_set and neg_pair not in negative_set:
+    drug = random.choice(list(positive_set))[0]
+    target = random.choice(list(positive_set))[1]
+    if drug != target:
+        neg_pair = (drug, target, False)
+        if (drug, target, True) not in positive_set and neg_pair not in negative_set:
             negative_set.add(neg_pair)
+
+print(f"Number of negative pairs: {len(negative_set)}")
 
 final_set = positive_set.union(negative_set)
 final_list = list(final_set)

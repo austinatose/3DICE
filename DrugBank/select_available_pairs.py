@@ -5,7 +5,7 @@ import pandas as pd
 import os
 import torch
 
-CSV_PATH = "lists/pairs_filtered.csv"
+CSV_PATH = "lists/pairs_filtered_new.csv"
 DRUG_EMB_DIR = "drug/embeddings_atomic"
 PROTEIN_EMB_DIR = "embeddings"
 
