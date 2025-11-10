@@ -28,8 +28,10 @@ class DrugConv(nn.Module): # can afford to be cheap on drug side because UniMol 
         self.conv2 = nn.Conv1d(hidden_dims[0], hidden_dims[1], kernel_size=3, padding=1)
 
     def forward(self, x):
+        x = x.transpose(1, 2)  # (batch_size, input_dim, seq_len)
         x = self.conv1(x)
         x = self.conv2(x)
+        x = x.transpose(1, 2)  # (batch_size, seq_len, hidden_dim)
         return x
 
 class CrossAttention(nn.Module): # refer to CAT-DTI
@@ -38,7 +40,7 @@ class CrossAttention(nn.Module): # refer to CAT-DTI
         self.CA = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout_rate, batch_first=True)
 
     def forward(self, protein_features, drug_features, protein_mask=None, drug_mask=None):
-        attended_protein_features, attentionp =self.CA(protein_features, drug_features, drug_features, key_padding_mask=drug_mask)
+        attended_protein_features, attentionp = self.CA(protein_features, drug_features, drug_features, key_padding_mask=drug_mask)
         attended_drug_features, attentiond = self.CA(drug_features, protein_features, protein_features, key_padding_mask=protein_mask)
         return attended_protein_features, attended_drug_features
 
@@ -95,19 +97,21 @@ class MLP(nn.Module):
 class Model(nn.Module):
     def __init__(self, cfg):
         super(Model, self).__init__()
-        # TODO: Fill in the data
         self.protein_sa = ProteinSA(cfg["PROTEIN"]["EMBEDDING_DIM"])
         self.drug_conv = DrugConv(cfg["DRUG"]["EMBEDDING_DIM"], cfg["DRUG"]["DIMS"])
         self.cross_attention = CrossAttention(cfg["PROTEIN"]["EMBEDDING_DIM"])
         self.fusion = Fusion(cfg["DRUG"]["EMBEDDING_DIM"], cfg["DRUG"]["DIMS"], cfg["PROTEIN"]["EMBEDDING_DIM"], cfg["PROTEIN"]["DIMS"])
         self.mlp = MLP(cfg["MLP"]["INPUT_DIM"], cfg["MLP"]["DIMS"])
 
-    def forward(self, protein_seq, drug_graph, mode="train"):
+    def forward(self, protein_emb, drug_emb, mode="train"):
         # i should be able to easily turn off SA and the drug CNN
-        protein_features = self.protein_sa(protein_seq)
-        drug_features = self.drug_conv(drug_graph)
+        # input is (B, L, D)
+        protein_features = self.protein_sa(protein_emb)
+        drug_features = self.drug_conv(drug_emb)
+        # Both (B, L, D)
         attended_protein_features, attended_drug_features = self.cross_attention(protein_features, drug_features)
         fused_features = self.fusion(attended_protein_features, attended_drug_features)
+        # at this point, shape of (B, D)
         output = self.mlp(fused_features)
 
         return output
