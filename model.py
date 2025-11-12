@@ -93,19 +93,20 @@ class Model(nn.Module):
     def __init__(self, cfg):
         super(Model, self).__init__()
         self.protein_sa = ProteinSA(cfg.PROTEIN.EMBEDDING_DIM)
-        self.drug_conv = DrugConv(cfg.DRUG.EMBEDDING_DIM, cfg.DRUG.CONV_DIMS)
+        # self.drug_conv = DrugConv(cfg.DRUG.EMBEDDING_DIM, cfg.DRUG.CONV_DIMS)
         self.cross_attention = CrossAttention(cfg.PROTEIN.EMBEDDING_DIM)
         self.fusion = Fusion(cfg.DRUG.EMBEDDING_DIM, cfg.DRUG.MLP_DIMS, cfg.PROTEIN.EMBEDDING_DIM, cfg.PROTEIN.DIMS)
         self.mlp = MLP(cfg.MLP.INPUT_DIM, cfg.MLP.DIMS)
-    def forward(self, protein_emb, drug_emb, mode="train"):
+    def forward(self, protein_emb, drug_emb, protein_mask=None, drug_mask=None, mode="train"):
         # i should be able to easily turn off SA and the drug CNN
         # input is (B, L, D)
-        protein_features = self.protein_sa(protein_emb)
+        protein_features = self.protein_sa(protein_emb, mask=protein_mask)
+        # protein_features = protein_emb  # (B, L, D)
 
         # drug_features = self.drug_conv(drug_emb)
         drug_features = drug_emb  # (B, L, D)
         # Both (B, L, D)
-        attended_protein_features, attended_drug_features = self.cross_attention(protein_features, drug_features)
+        attended_protein_features, attended_drug_features = self.cross_attention(protein_features, drug_features, protein_mask=protein_mask, drug_mask=drug_mask)
         fused_features = self.fusion(attended_protein_features, attended_drug_features)
         # at this point, shape of (B, D)
         output = self.mlp(fused_features)
@@ -183,8 +184,8 @@ def _smoke_test():
 def _test_model_forward():
     import torch
     from torch.utils.data import DataLoader
-    from main import MyDataset  # change this import path
-    from main import collate_fn
+    from dataset import MyDataset  # change this import path
+    from dataset import collate_fn
     from config.cfg import get_cfg_defaults
     cfg = get_cfg_defaults()
 
@@ -199,7 +200,7 @@ def _test_model_forward():
     s = next(iter(dl))
 
     with torch.no_grad():
-        out = model(s["protein_emb"].to(device), s["drug_emb"].to(device))
+        out = model(s["protein_emb"].to(device), s["drug_emb"].to(device), s["protein_mask"].to(device), s["drug_mask"].to(device))
         print(out)
     print("[Model forward test] Forward pass successful. Output shape:", tuple(out.shape))
 

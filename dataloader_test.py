@@ -1,7 +1,7 @@
 import torch
 from torch.utils.data import DataLoader
-from main import MyDataset  # change this import path
-from main import collate_fn
+from dataset import MyDataset 
+from dataset import collate_fn
 import os
 
 # --- CONFIG --- #
