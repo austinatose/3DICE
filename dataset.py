@@ -1,15 +1,13 @@
 import os
-import torch
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.metrics import matthews_corrcoef, confusion_matrix, f1_score, recall_score, precision_score, accuracy_score, roc_auc_score, precision_recall_curve, auc, roc_curve
-from model import Model
-# from config.cfg import get_cfg_defaults
-from torch.utils.data import DataLoader, Dataset, SubsetRandomSampler
-from torch.nn.utils.rnn import pad_sequence
 import glob
 from functools import lru_cache
+
+import numpy as np
+import pandas as pd
+import torch
+from torch.utils.data import Dataset
+from torch.nn.utils.rnn import pad_sequence
+
 
 def collate_fn(batch):
     # pull fields
@@ -48,69 +46,108 @@ def collate_fn(batch):
         "drug_lens": drug_lens,
     }
 
+
 def find_pt_files(emb_root, uniprot_id):
     pattern = os.path.join(emb_root, uniprot_id, "*.pt")
     return sorted(glob.glob(pattern))
 
+
 class MyDataset(Dataset):
-    def __init__(self, csv_path, protein_dir, drug_dir):
-        self.df = pd.read_csv(csv_path)
+    def __init__(self, csv_path, protein_dir, drug_dir, *,
+                 prot_cache_size: int = 2,
+                 drug_cache_size: int = 2,
+                 use_pandas: bool = True):
+        """
+        RAM-efficient dataset that lazily loads embeddings on demand.
+
+        Args:
+            csv_path: path to CSV with columns [uniprot_id, drugbank_id, interaction]
+            protein_dir: root folder containing per-protein .pt embeddings under {uniprot_id}/*.pt
+            drug_dir: folder containing drug embeddings saved as {drugbank_id}_unimol.pt
+            prot_cache_size: LRU size for protein tensors (set small to keep RAM low; 0 disables caching)
+            drug_cache_size: LRU size for drug tensors (set small to keep RAM low; 0 disables caching)
+            use_pandas: if True, uses pandas to parse; else falls back to a lightweight CSV reader
+        """
         self.protein_dir = protein_dir
         self.drug_dir = drug_dir
 
-        # Cache loaders (cache key will be the single argument: uniprot_id / drugbank_id)
-        self._get_prot = lru_cache(maxsize=5000)(self._load_prot)
-        self._get_drug = lru_cache(maxsize=5000)(self._load_drug)
+        # Parse CSV minimally and discard the DataFrame to free memory.
+        if use_pandas:
+            df = pd.read_csv(
+                csv_path,
+                usecols=["uniprot_id", "drugbank_id", "interaction"],
+                dtype={"uniprot_id": str, "drugbank_id": str, "interaction": "int8"},
+                engine="c",
+                memory_map=True,
+            )
+            self.uniprot_ids = df["uniprot_id"].tolist()
+            self.drugbank_ids = df["drugbank_id"].tolist()
+            self.labels = df["interaction"].astype("int8").tolist()
+            del df
+        else:
+            # Lightweight CSV parsing without pandas
+            import csv
+            self.uniprot_ids, self.drugbank_ids, self.labels = [], [], []
+            with open(csv_path, "r", newline="") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    self.uniprot_ids.append(str(row["uniprot_id"]))
+                    self.drugbank_ids.append(str(row["drugbank_id"]))
+                    self.labels.append(int(row["interaction"]))
 
-    def _load_prot(self, uniprot_id):
-        files = find_pt_files(self.protein_dir, str(uniprot_id))
-        if not files:
-            raise FileNotFoundError(f"No .pt files found for uniprot_id='{uniprot_id}' in {self.protein_dir}")
-        # Use the last (alphabetically latest) match
-        path = files[-1]
-        emb = torch.load(path, map_location="cpu", weights_only=False)
-        return emb
+        # Configure tiny LRU caches (or disable if size == 0)
+        if prot_cache_size > 0:
+            self._get_prot = lru_cache(maxsize=prot_cache_size)(self._load_prot)
+        else:
+            self._get_prot = self._load_prot
 
-    def _load_drug(self, drugbank_id):
-        path = os.path.join(self.drug_dir, f"{drugbank_id}_unimol.pt")
-        if not os.path.exists(path):
-            raise FileNotFoundError(f"Drug embedding not found: {path}")
-        emb = torch.load(path, map_location="cpu", weights_only=False)
-        emb = torch.FloatTensor(np.array(emb["atomic_reprs"]).reshape(-1, 512))
-        return emb
+        if drug_cache_size > 0:
+            self._get_drug = lru_cache(maxsize=drug_cache_size)(self._load_drug)
+        else:
+            self._get_drug = self._load_drug
 
     def __len__(self):
-        return len(self.df)
+        return len(self.uniprot_ids)
 
     def __getitem__(self, idx):
-        row = self.df.iloc[idx]
-        uniprot_id = row["uniprot_id"]
-        drugbank_id = row["drugbank_id"]
-        label = int(row["interaction"])
+        uniprot_id = self.uniprot_ids[idx]
+        drugbank_id = self.drugbank_ids[idx]
+        label = int(self.labels[idx])
 
         protein_emb = self._get_prot(uniprot_id)  # (L_p, d)
-        drug_emb = self._get_drug(drugbank_id)        # (L_d, d)
+        drug_emb = self._get_drug(drugbank_id)    # (L_d, d)
 
-        sample = {
+        return {
             "protein_emb": protein_emb,
             "drug_emb": drug_emb,
             "label": label,
             "uniprot_id": uniprot_id,
             "drugbank_id": drugbank_id,
         }
-        return sample
 
-# def main():
-#     cfg = get_cfg_defaults()
-#     device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#     model = Model(cfg)
+    def _load_prot(self, uniprot_id: str):
+        files = find_pt_files(self.protein_dir, str(uniprot_id))
+        if not files:
+            raise FileNotFoundError(
+                f"No .pt files found for uniprot_id='{uniprot_id}' in {self.protein_dir}"
+            )
+        # Use the last (alphabetically latest) match
+        path = files[-1]
+        # If the file stores a plain tensor, weights_only=True avoids loading extraneous pickled objects
+        emb = torch.load(path, map_location="cpu", weights_only=True)
+        # Ensure float32 tensor and contiguous memory layout
+        if not isinstance(emb, torch.Tensor):
+            emb = torch.as_tensor(emb)
+        emb = emb.to(dtype=torch.float32, copy=False).contiguous()
+        return emb
 
-#     # use pre-split data first, then implement k-fold later
-
-#     train_loader = DataLoader(, batch_size=cfg.SOLVER.BATCH_SIZE, drop_last=True)  # TODO: Initialize your DataLoader
-#     val_loader = None    # TODO: Initialize your DataLoader
-#     test_loader = None   # TODO: Initialize your DataLoader
-
-#     solver = Solver(model, cfg, device, optim=torch.optim.Adam, loss_fn=torch.nn.CrossEntropyLoss(), eval=True) 
-#     solver.train(train_loader, val_loader, test_loader)
-
+    def _load_drug(self, drugbank_id: str):
+        path = os.path.join(self.drug_dir, f"{drugbank_id}_unimol.pt")
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Drug embedding not found: {path}")
+        d = torch.load(path, map_location="cpu", weights_only=False)
+        arr = np.asarray(d["atomic_reprs"], dtype=np.float32).reshape(-1, 512)
+        # Drop the dict promptly to free RAM; keep only the tensor view
+        del d
+        emb = torch.from_numpy(arr)
+        return emb
