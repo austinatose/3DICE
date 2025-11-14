@@ -45,7 +45,7 @@ def dirichlet_kl_to_uniform(alpha):
     return kl
 
 
-def dirichlet_loss(alphas, y, lam=1.0):
+def dirichlet_loss(alphas, y, lam=0.1):
     """
     Sensoy-style evidential loss:
       L = |y - p|^2 + p(1-p)/(S+1) + λ * KL(Dir(alpha_hat) || Dir(1))
@@ -121,6 +121,7 @@ class Solver:
             # max_len = sequence_lengths.max().item()
 
             predictions = self.model(protein_emb, drug_emb, protein_mask=protein_mask, drug_mask=drug_mask, mode="train")  # [batchsize, 2]
+            print("Predictions:", predictions)
 
             # 0 is negative, 1 is positive. take larger logit as pred
             _, pred = torch.max(predictions, dim=1)  # [batchsize]
