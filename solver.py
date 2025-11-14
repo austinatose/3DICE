@@ -132,7 +132,8 @@ class Solver:
             # 0 is negative, 1 is positive. take larger logit as pred
             _, pred = torch.max(predictions, dim=1)  # [batchsize]
 
-            loss = self.loss_fn(predictions, labels) 
+            # loss = self.loss_fn(predictions, labels) 
+            loss = F.cross_entropy(predictions, labels)
 
             results.append(torch.stack([labels.detach().cpu(), pred.detach().cpu()], dim=1).numpy())  # [batchsize, 2]
 

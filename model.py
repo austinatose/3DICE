@@ -85,7 +85,7 @@ class MLP(nn.Module):
         x = nn.SELU()(self.fc3(x))
         x = self.dropout(x)
         x = self.out(x)
-        x = F.softplus(x) + 1 # !!
+        # x = F.softplus(x) + 1 # !!
 
         return x
 
