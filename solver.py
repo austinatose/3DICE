@@ -13,21 +13,72 @@ from dataset import MyDataset, collate_fn
 
 from model import Model
 
-def dirichlet_loss(predictions, labels, alpha=1.0):
-    """
-    Compute Dirichlet loss for multi-class classification.
-    predictions: Tensor of shape (batch_size, num_classes)
-    labels: Tensor of shape (batch_size,)
-    alpha: concentration parameter
-    """
-    num_classes = predictions.size(1)
-    one_hot_labels = torch.nn.functional.one_hot(labels, num_classes=num_classes).float()
-    S = torch.sum(predictions, dim=1, keepdim=True)
-    log_S = torch.log(S)
-    log_p = torch.digamma(predictions) - torch.digamma(S)
+import torch
+import torch.nn.functional as F
 
-    loss = torch.sum((one_hot_labels - (predictions / S)) * log_p, dim=1)
-    return torch.mean(loss)
+import torch
+import torch.nn.functional as F
+
+import torch
+import torch.nn.functional as F
+
+def dirichlet_kl_to_uniform(alpha):
+    """
+    KL(Dir(alpha) || Dir(1,...,1)) per sample.
+    alpha: (B, K), all > 0
+    returns: (B, 1)
+    """
+    beta = torch.ones_like(alpha)
+    S_alpha = alpha.sum(dim=-1, keepdim=True)
+    S_beta = beta.sum(dim=-1, keepdim=True)
+
+    # log B(·)
+    log_B_alpha = torch.lgamma(alpha).sum(dim=-1, keepdim=True) - torch.lgamma(S_alpha)
+    log_B_beta  = torch.lgamma(beta).sum(dim=-1, keepdim=True) - torch.lgamma(S_beta)
+
+    # KL = log B(beta) - log B(alpha) + sum((alpha-beta)(ψ(alpha) - ψ(S_alpha)))
+    digamma_alpha = torch.digamma(alpha)
+    digamma_S_alpha = torch.digamma(S_alpha)
+
+    kl = (log_B_beta - log_B_alpha
+          + ((alpha - beta) * (digamma_alpha - digamma_S_alpha)).sum(dim=-1, keepdim=True))
+    return kl
+
+
+def dirichlet_loss(alphas, y, lam=1.0):
+    """
+    Sensoy-style evidential loss:
+      L = |y - p|^2 + p(1-p)/(S+1) + λ * KL(Dir(alpha_hat) || Dir(1))
+
+    y:      (B,) int labels OR (B, K) one-hot labels
+    alphas: (B, K) positive Dirichlet parameters (evidence + 1)
+    lam:    coefficient for KL term
+    """
+    B, K = alphas.shape
+
+    # Make y one-hot
+    if y.dim() == 1:
+        y_one_hot = F.one_hot(y.long(), num_classes=K).float()
+    else:
+        y_one_hot = y.float()
+
+    y_one_hot = y_one_hot.to(alphas.device)
+
+    # Dirichlet mean
+    S = alphas.sum(dim=-1, keepdim=True)      # (B,1)
+    p = alphas / S                            # (B,K)
+
+    # Squared error + variance term
+    A = ((y_one_hot - p) ** 2).sum(dim=-1, keepdim=True)
+    B_term = (p * (1 - p) / (S + 1)).sum(dim=-1, keepdim=True)
+    sos = A + B_term                          # (B,1)
+
+    # Regularization KL term
+    alpha_hat = y_one_hot + (1 - y_one_hot) * alphas
+    kl_reg = lam * dirichlet_kl_to_uniform(alpha_hat)  # (B,1)
+
+    loss = sos + kl_reg                       # (B,1)
+    return loss.mean()              # scalar
 
 class Solver:
     def __init__(self, model, cfg, device, optim, loss_fn, eval):
@@ -74,7 +125,7 @@ class Solver:
             # 0 is negative, 1 is positive. take larger logit as pred
             _, pred = torch.max(predictions, dim=1)  # [batchsize]
 
-            loss = self.loss_fn(predictions, labels) # TODO: compute loss
+            loss = self.loss_fn(predictions, labels) 
 
             results.append(torch.stack([labels.detach().cpu(), pred.detach().cpu()], dim=1).numpy())  # [batchsize, 2]
 
@@ -186,6 +237,15 @@ if __name__ == "__main__":
     model = Model(cfg)
     device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cuda" if torch.cuda.is_available() else "cpu")
     solver = Solver(model, cfg, device=device,
-                    optim=torch.optim.Adam, loss_fn=None, eval=None)
+                    optim=torch.optim.Adam, loss_fn=dirichlet_loss, eval=None)
 
     solver.train(solver.train_dl, solver.val_dl)
+
+    # dirichlet loss test
+    # B = 2
+    # K = 2
+    # alpha = torch.tensor([[1000000, 1], [1, 10000]])
+    # print("Alpha:", alpha)
+    # labels = torch.tensor([0, 0])
+    # loss = dirichlet_loss(labels, alpha, lam=0.1)
+    # print("Dirichlet loss test:", loss.item())
