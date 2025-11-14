@@ -75,9 +75,15 @@ def dirichlet_loss(alphas, y, lam=0.1):
 
     # Regularization KL term
     alpha_hat = y_one_hot + (1 - y_one_hot) * alphas
-    kl_reg = lam * dirichlet_kl_to_uniform(alpha_hat)  # (B,1)
+    # kl_reg = lam * dirichlet_kl_to_uniform(alpha_hat)  # (B,1)
 
-    loss = sos + kl_reg                       # (B,1)
+    kl_reg = dirichlet_kl_to_uniform(alpha_hat)  # (B,1)
+    error_weight = A.detach()    # or A.detach() / A.detach().mean().clamp_min(1e-6)
+    # print("Error weight:", error_weight)
+    reg = lam * error_weight * kl_reg
+    # print("KL reg:", reg)
+
+    loss = sos + reg                       # (B,1)
     return loss.mean()              # scalar
 
 class Solver:
@@ -121,7 +127,7 @@ class Solver:
             # max_len = sequence_lengths.max().item()
 
             predictions = self.model(protein_emb, drug_emb, protein_mask=protein_mask, drug_mask=drug_mask, mode="train")  # [batchsize, 2]
-            print("Predictions:", predictions)
+            # print("Predictions:", predictions)
 
             # 0 is negative, 1 is positive. take larger logit as pred
             _, pred = torch.max(predictions, dim=1)  # [batchsize]
@@ -245,7 +251,7 @@ if __name__ == "__main__":
     # dirichlet loss test   
     # B = 4
     # K = 2
-    # alpha = torch.tensor([[1.5, 1.5], [1.6, 1.5], [1.6, 1.7] ,[1.2, 1.3]])
+    # alpha = torch.tensor([[1600000, 1.5], [1.6, 1.5], [1.8, 1.7] ,[1.4, 1.3]])
     # print("Alpha:", alpha)
     # labels = torch.tensor([0, 0, 0, 0])
     # loss = dirichlet_loss(alpha, labels, lam=0.1)
