@@ -178,7 +178,7 @@ class Solver:
         self.model.eval()
         pred_pairs = []     # [pred, label]
         prob_list = []      # P(y=1)
-        conf_list = []      # confidence proxy: K / sum(alpha)
+        conf_list = []      # confidence proxy: K / sum(alpha) or max prob
         ev_list = []        # evidence = alpha - 1
         bk_list = []        # belief = (alpha - 1) / sum(alpha)
         label_list = []
@@ -191,38 +191,54 @@ class Solver:
             drug_mask = batch["drug_mask"].to(self.device)             # (B, Ld)
             protein_emb = batch["protein_emb"].to(self.device)         # (B, Lp, Dp)
             drug_emb = batch["drug_emb"].to(self.device)               # (B, Ld, Dd)
-            # FIXME for CE
-            # Model outputs Dirichlet alphas (>=1) of shape (B, 2)
-            alphas = self.model(protein_emb, drug_emb,
-                                 protein_mask=protein_mask,
-                                 drug_mask=drug_mask,
-                                 mode="test")                          # (B,2)
 
-            # Move to CPU numpy for post-processing
-            alphas_np = alphas.detach().cpu().numpy()                   # (B,2)
             labels_np = labels.detach().cpu().numpy().astype(int)       # (B,)
 
-            # Per-batch computations
-            sum_alpha = np.sum(alphas_np, axis=1, keepdims=True)        # (B,1)
-            probs = alphas_np / sum_alpha                               # (B,2)
-            preds = np.argmax(probs, axis=1).astype(int)                # (B,)
+            if self.loss_fn is F.cross_entropy:
+                # CE mode: model outputs logits; use softmax for probabilities
+                logits = self.model(protein_emb, drug_emb,
+                                    protein_mask=protein_mask,
+                                    drug_mask=drug_mask,
+                                    mode="test")                       # (B,2)
 
-            # Confidence proxy (higher sum_alpha -> higher confidence)
-            K = alphas_np.shape[1]
-            conf = K / sum_alpha.squeeze(1)                              # (B,)
+                probs_t = F.softmax(logits, dim=1)                      # (B,2)
+                probs = probs_t.detach().cpu().numpy()
+                preds = np.argmax(probs, axis=1).astype(int)            # (B,)
 
-            evidence = alphas_np - 1.0                                   # (B,2)
-            belief = evidence / sum_alpha                                # (B,2)
+                # Simple confidence proxy: max class probability
+                conf = probs.max(axis=1)                                # (B,)
 
-            pred_pairs.append(np.stack([preds, labels_np], axis=1))      # (B,2)
-            prob_list.extend(probs[:, 1].tolist())                       # positive-class prob
+                # For CE mode, we don't have evidential quantities; append zeros
+                evidence = np.zeros_like(probs)                         # (B,2)
+                belief = np.zeros_like(probs)                           # (B,2)
+            else:
+                # Evidential mode: model outputs Dirichlet alphas (>=1) of shape (B, 2)
+                alphas = self.model(protein_emb, drug_emb,
+                                   protein_mask=protein_mask,
+                                   drug_mask=drug_mask,
+                                   mode="test")                          # (B,2)
+
+                alphas_np = alphas.detach().cpu().numpy()               # (B,2)
+                sum_alpha = np.sum(alphas_np, axis=1, keepdims=True)    # (B,1)
+                probs = alphas_np / sum_alpha                           # (B,2)
+                preds = np.argmax(probs, axis=1).astype(int)            # (B,)
+
+                # Confidence proxy (higher sum_alpha -> higher confidence)
+                K = alphas_np.shape[1]
+                conf = (K / sum_alpha.squeeze(1))                       # (B,)
+
+                evidence = alphas_np - 1.0                              # (B,2)
+                belief = evidence / sum_alpha                           # (B,2)
+
+            pred_pairs.append(np.stack([preds, labels_np], axis=1))     # (B,2)
+            prob_list.extend(probs[:, 1].tolist())                      # positive-class prob
             conf_list.extend(conf.tolist())
-            for i in range(alphas_np.shape[0]):
+            for i in range(probs.shape[0]):
                 ev_list.append(evidence[i])
                 bk_list.append(belief[i])
 
             uniprot_ids.extend(batch["uniprot_id"])                     # list[str]
-            drugbank_ids.extend(batch["drugbank_id"])                           # list[str]
+            drugbank_ids.extend(batch["drugbank_id"])                   # list[str]
 
         pred_pairs = np.vstack(pred_pairs) if len(pred_pairs) else np.zeros((0,2), dtype=int)
         return uniprot_ids, drugbank_ids, pred_pairs, conf_list, conf_list, prob_list, ev_list, bk_list
@@ -239,10 +255,8 @@ class Solver:
             with torch.no_grad():
                 _, _, val_results, _, _, prob_list, _, _ = self.predict_test(val_loader)
 
-            TN = confusion_matrix(val_results[:, 1], val_results[:, 0])[0, 0]
-            FP = confusion_matrix(val_results[:, 1], val_results[:, 0])[0, 1]
-            FN = confusion_matrix(val_results[:, 1], val_results[:, 0])[1, 0]
-            TP = confusion_matrix(val_results[:, 1], val_results[:, 0])[1, 1]
+            cm = confusion_matrix(val_results[:, 1], val_results[:, 0])
+            TN, FP, FN, TP = cm[0, 0], cm[0, 1], cm[1, 0], cm[1, 1]
 
             val_results = np.squeeze(np.array(val_results))  # [N, 2]
             train_acc = 100 * np.equal(train_results[:, 0], train_results[:, 1]).sum() / len(train_results)
