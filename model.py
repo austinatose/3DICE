@@ -105,28 +105,6 @@ class Fusion(nn.Module): # get fixed length representations and concat
         res = torch.cat((protein_features, drug_features), dim=-1)
         return res
 
-# class MLP(nn.Module):
-#     def __init__(self, input_dim, hidden_dims, dropout_rate=0.2):
-#         super(MLP, self).__init__()
-#         self.fc1 = nn.Linear(input_dim, hidden_dims[0])
-#         self.fc2 = nn.Linear(hidden_dims[0], hidden_dims[1])
-#         self.fc3 = nn.Linear(hidden_dims[1], hidden_dims[2])
-#         self.out = nn.Linear(hidden_dims[2], hidden_dims[3])
-#         # self.dropout = nn.Dropout(dropout_rate)
-#         self.dropout = nn.AlphaDropout(dropout_rate)
-
-#     def forward(self, x):
-#         x = nn.SELU()(self.fc1(x))
-#         x = self.dropout(x)
-#         x = nn.SELU()(self.fc2(x))
-#         x = self.dropout(x)
-#         x = nn.SELU()(self.fc3(x))
-#         x = self.dropout(x)
-#         x = self.out(x)
-#         # x = F.softplus(x) + 1 # !!
-
-#         return x
-
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dims, dropout_rate=0.2):
         super(MLP, self).__init__()
@@ -134,18 +112,40 @@ class MLP(nn.Module):
         self.fc2 = nn.Linear(hidden_dims[0], hidden_dims[1])
         self.fc3 = nn.Linear(hidden_dims[1], hidden_dims[2])
         self.out = nn.Linear(hidden_dims[2], hidden_dims[3])
-        self.dropout = nn.Dropout(dropout_rate)
-        self.activation = nn.ReLU()
+        # self.dropout = nn.Dropout(dropout_rate)
+        self.dropout = nn.AlphaDropout(dropout_rate)
 
     def forward(self, x):
-        x = self.activation(self.fc1(x))
+        x = nn.SELU()(self.fc1(x))
         x = self.dropout(x)
-        x = self.activation(self.fc2(x))
+        x = nn.SELU()(self.fc2(x))
         x = self.dropout(x)
-        x = self.activation(self.fc3(x))
+        x = nn.SELU()(self.fc3(x))
         x = self.dropout(x)
         x = self.out(x)
+        # x = F.softplus(x) + 1 # !!
+
         return x
+
+# class MLP(nn.Module):
+#     def __init__(self, input_dim, hidden_dims, dropout_rate=0.2):
+#         super(MLP, self).__init__()
+#         self.fc1 = nn.Linear(input_dim, hidden_dims[0])
+#         self.fc2 = nn.Linear(hidden_dims[0], hidden_dims[1])
+#         self.fc3 = nn.Linear(hidden_dims[1], hidden_dims[2])
+#         self.out = nn.Linear(hidden_dims[2], hidden_dims[3])
+#         self.dropout = nn.Dropout(dropout_rate)
+#         self.activation = nn.ReLU()
+
+#     def forward(self, x):
+#         x = self.activation(self.fc1(x))
+#         x = self.dropout(x)
+#         x = self.activation(self.fc2(x))
+#         x = self.dropout(x)
+#         x = self.activation(self.fc3(x))
+#         x = self.dropout(x)
+#         x = self.out(x)
+#         return x
 
 class Model(nn.Module):
     def __init__(self, cfg):
