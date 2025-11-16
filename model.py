@@ -59,12 +59,14 @@ class Fusion(nn.Module): # get fixed length representations and concat
         self.drug_fc1 = nn.Linear(drug_embed_dim, drug_hidden_dims[0])
         self.drug_fc2 = nn.Linear(drug_hidden_dims[0], drug_hidden_dims[1])
 
-        self.protein_linear = nn.Sequential(
-            nn.Linear(protein_embed_dim, protein_hidden_dims[0]),
-            nn.Dropout(dropout_rate),
-            nn.ReLU(),
-            nn.BatchNorm1d(protein_hidden_dims[0]),
-        )
+        # self.protein_linear = nn.Sequential(
+        #     nn.Linear(protein_embed_dim, protein_hidden_dims[0]),
+        #     nn.Dropout(dropout_rate),
+        #     nn.ReLU(),
+        #     nn.BatchNorm1d(protein_hidden_dims[0]),
+        # )
+
+        self.protein_linear = nn.Linear(protein_embed_dim, protein_hidden_dims[0])
 
     def forward(self, protein_features, drug_features): # TODO: Think about pooling strategies
         # pooling strategy from evidti
@@ -99,7 +101,7 @@ class MLP(nn.Module):
         x = nn.SELU()(self.fc3(x))
         x = self.dropout(x)
         x = self.out(x)
-        x = F.softplus(x) + 1 # !!
+        # x = F.softplus(x) + 1 # !!
 
         return x
 
