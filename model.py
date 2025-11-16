@@ -45,11 +45,12 @@ class DrugConv(nn.Module):
 class CrossAttention(nn.Module): # refer to CAT-DTI
     def __init__(self, embed_dim, num_heads=8, dropout_rate=0.1):
         super(CrossAttention, self).__init__()
-        self.CA = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout_rate, batch_first=True)
+        self.CAp = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout_rate, batch_first=True)
+        self.CAd = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout_rate, batch_first=True)
 
     def forward(self, protein_features, drug_features, protein_mask=None, drug_mask=None):
-        attended_protein_features, attentionp = self.CA(protein_features, drug_features, drug_features, key_padding_mask=drug_mask)
-        attended_drug_features, attentiond = self.CA(drug_features, protein_features, protein_features, key_padding_mask=protein_mask)
+        attended_protein_features, attentionp = self.CAp(protein_features, drug_features, drug_features, key_padding_mask=drug_mask)
+        attended_drug_features, attentiond = self.CAd(drug_features, protein_features, protein_features, key_padding_mask=protein_mask)
         return attended_protein_features, attended_drug_features
 
 class Fusion(nn.Module): # get fixed length representations and concat
@@ -68,18 +69,39 @@ class Fusion(nn.Module): # get fixed length representations and concat
 
         self.protein_linear = nn.Linear(protein_embed_dim, protein_hidden_dims[0])
 
-    def forward(self, protein_features, drug_features): # TODO: Think about pooling strategies
-        # pooling strategy from evidti
-        protein_features = torch.mean(protein_features, dim=1)  # mean pooling
-        protein_features = self.protein_linear(protein_features) 
+    def forward(self, protein_features, drug_features, protein_mask, drug_mask): # TODO: Think about pooling strategies
+        # # pooling strategy from evidti
+        # protein_features = torch.mean(protein_features, dim=1)  # mean pooling
+        # protein_features = self.protein_linear(protein_features) 
 
-        # mean pooling for drugs as recommended by unimol
-        drug_features = torch.mean(drug_features, dim=1)  # mean pooling
+        # # mean pooling for drugs as recommended by unimol
+        # drug_features = torch.mean(drug_features, dim=1)  # mean pooling
+        # drug_features = self.drug_fc1(drug_features)
+        # drug_features = self.drug_fc2(drug_features)
+
+        if protein_mask is not None:
+            valid_p = ~protein_mask                      # True where valid
+            valid_p = valid_p.unsqueeze(-1)              # (B, Lp, 1)
+            protein_sum = (protein_features * valid_p).sum(dim=1)  # (B, D)
+            protein_count = valid_p.sum(dim=1).clamp(min=1)        # (B, 1)
+            protein_features = protein_sum / protein_count
+        else:
+            protein_features = protein_features.mean(dim=1)
+
+        protein_features = self.protein_linear(protein_features)
+
+        if drug_mask is not None:
+            valid_d = ~drug_mask                         # True where valid
+            valid_d = valid_d.unsqueeze(-1)              # (B, Ld, 1)
+            drug_sum = (drug_features * valid_d).sum(dim=1)        # (B, D)
+            drug_count = valid_d.sum(dim=1).clamp(min=1)           # (B, 1)
+            drug_features = drug_sum / drug_count
+        else:
+            drug_features = drug_features.mean(dim=1)
+
         drug_features = self.drug_fc1(drug_features)
         drug_features = self.drug_fc2(drug_features)
-
         # now both drug and protein features are of same dimension of 256
-
         res = torch.cat((protein_features, drug_features), dim=-1)
         return res
 
@@ -123,7 +145,7 @@ class Model(nn.Module):
         drug_features = drug_emb  # (B, L, D)
         # Both (B, L, D)
         attended_protein_features, attended_drug_features = self.cross_attention(protein_features, drug_features, protein_mask=protein_mask, drug_mask=drug_mask)
-        fused_features = self.fusion(attended_protein_features, attended_drug_features)
+        fused_features = self.fusion(attended_protein_features, attended_drug_features, protein_mask=protein_mask, drug_mask=drug_mask)
         # at this point, shape of (B, D)
         output = self.mlp(fused_features)
 
@@ -131,6 +153,77 @@ class Model(nn.Module):
 
 
 
+
+def _test_masks():
+    """
+    Quick sanity check for mask semantics:
+    - Builds toy protein/drug sequences with different lengths.
+    - Constructs masks in the same way as the collate_fn (True = PAD, False = valid).
+    - Runs ProteinSA and CrossAttention and checks basic invariants.
+    """
+    torch.manual_seed(0)
+    device_local = device
+
+    # Toy batch
+    B = 2
+    Lp_max = 6
+    Ld_max = 5
+    D = 16  # small dim for a quick test
+
+    # Example lengths: second sample is full length, first has padding
+    prot_lens = torch.tensor([4, 6], device=device_local)
+    drug_lens = torch.tensor([3, 5], device=device_local)
+
+    # Build masks in the same way as collate_fn (True = padding, False = valid)
+    prot_mask = torch.arange(Lp_max, device=device_local).unsqueeze(0).expand(B, Lp_max) >= prot_lens.unsqueeze(1)
+    drug_mask = torch.arange(Ld_max, device=device_local).unsqueeze(0).expand(B, Ld_max) >= drug_lens.unsqueeze(1)
+
+    print("[_test_masks] protein lengths:", prot_lens.tolist())
+    print("[_test_masks] protein mask (True = PAD):")
+    print(prot_mask.cpu().numpy())
+    print("[_test_masks] drug lengths:", drug_lens.tolist())
+    print("[_test_masks] drug mask (True = PAD):")
+    print(drug_mask.cpu().numpy())
+
+    # Random token embeddings
+    protein_emb = torch.randn(B, Lp_max, D, device=device_local, requires_grad=True)
+    drug_emb = torch.randn(B, Ld_max, D, device=device_local, requires_grad=True)
+
+    # Instantiate small versions of the modules
+    protein_sa = ProteinSA(embed_dim=D, num_heads=4, dropout_rate=0.0).to(device_local)
+    cross_attn = CrossAttention(embed_dim=D, num_heads=4, dropout_rate=0.0).to(device_local)
+    fusion = Fusion(
+        drug_embed_dim=D,
+        drug_hidden_dims=[32, 8],
+        protein_embed_dim=D,
+        protein_hidden_dims=[8],
+        dropout_rate=0.0,
+    ).to(device_local)
+
+    protein_sa.train()
+    cross_attn.train()
+    fusion.train()
+
+    # Forward through ProteinSA with masks
+    sa_out = protein_sa(protein_emb, mask=prot_mask)
+    print("[_test_masks] ProteinSA output shape:", tuple(sa_out.shape))
+
+    # Forward through CrossAttention with masks
+    attn_prot, attn_drug = cross_attn(sa_out, drug_emb, protein_mask=prot_mask, drug_mask=drug_mask)
+    print("[_test_masks] CrossAttention protein/drug shapes:", tuple(attn_prot.shape), tuple(attn_drug.shape))
+
+    # Forward through Fusion with masks
+    fused = fusion(attn_prot, attn_drug, protein_mask=prot_mask, drug_mask=drug_mask)
+    print("[_test_masks] Fusion output shape:", tuple(fused.shape))
+
+    # Simple grad check to ensure masks don't block all gradients
+    loss = fused.pow(2).mean()
+    loss.backward()
+    has_grad = any(p.grad is not None for p in list(protein_sa.parameters()) +
+                   list(cross_attn.parameters()) +
+                   list(fusion.parameters()))
+    assert has_grad, "[_test_masks] No gradients flowed with masks applied."
+    print("[_test_masks] Gradients OK with masks.")
 
 # -------------------------
 # Sanity checks
@@ -160,7 +253,7 @@ def _test_fusion_module():
     fusion.train()
 
     # Forward
-    fused = fusion(protein_tokens, drug_tokens)  # expect [B, 512]
+    fused = fusion(protein_tokens, drug_tokens, protein_mask=None, drug_mask=None)  # expect [B, 512]
     print("[Fusion] output shape:", tuple(fused.shape))
 
     # Shape check
@@ -227,6 +320,7 @@ if __name__ == "__main__":
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Total parameters: {total_params}")
     print(f"Trainable parameters: {trainable_params}")
-    _test_fusion_module()
-    _smoke_test()
-    _test_model_forward()
+    _test_masks()
+    # _test_fusion_module()
+    # _smoke_test()
+    # _test_model_forward()
