@@ -155,7 +155,7 @@ for i, fpath in enumerate(tqdm(files), 1):
         if "X" in seq:
             print(f"[warn] {fpath.name}: sequence contains 'X' (unknown residues); consider extending CANON_MAP if frequent.")
         # Extract residue embeddings [L, 512] using built-in helper
-        rep = get_encoder_output(model, alphabet, coords)
+        rep = get_encoder_output(model, alphabet, coords) # IMPORTANT WHAT IS ALPHABET HERE
         # Ensure CPU tensor
         rep = rep.detach().cpu()
         L = rep.shape[0]
