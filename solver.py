@@ -107,7 +107,8 @@ class Solver:
         self.val_ds = MyDataset(cfg.DATA.VAL_CSV_PATH, cfg.DATA.PROTEIN_DIR, cfg.DATA.DRUG_DIR)
         self.val_dl = DataLoader(self.val_ds, batch_size=cfg.SOLVER.BATCH_SIZE, shuffle=True, num_workers=0, collate_fn=collate_fn, drop_last=False)
 
-        self.loss_fn = dirichlet_loss
+        self.loss_fn = dirichlet_loss if loss_fn == "dirichlet_loss" else F.cross_entropy
+        print(f"Using loss function: {self.loss_fn.__name__}")
 
         print("Solver initialized.")
 
@@ -137,8 +138,8 @@ class Solver:
             # 0 is negative, 1 is positive. take larger logit as pred
             _, pred = torch.max(predictions, dim=1)  # [batchsize]
 
-            # loss = self.loss_fn(predictions, labels) 
-            loss = F.cross_entropy(predictions, labels)
+            loss = self.loss_fn(predictions, labels) 
+            # loss = F.cross_entropy(predictions, labels)
 
             results.append(torch.stack([labels.detach().cpu(), pred.detach().cpu()], dim=1).numpy())  # [batchsize, 2]
 
@@ -242,16 +243,43 @@ class Solver:
                 val_auc = roc_auc_score(val_results[:, 1], prob_list)
 
             print('[Epoch %d] val accuracy: %.4f%% train accuracy: %.4f%% train loss: %.4f' % (epoch + 1, val_acc, train_acc, train_loss))
-            self.save_model(epoch + 1)
+            if epoch % 10 == 0:
+                self.save_model(epoch + 1)
+        
+        self.evaluate(self.test_dl)
 
         # TODO: whole bunch incomplete
 
 
     def evaluate(self, data_loader):
-        pass
+        self.model.eval()
+        uniprot_ids, drugbank_ids, pred_pairs, conf_list, conf_list, prob_list, ev_list, bk_list = self.predict_test(data_loader)
+
+        val_results = np.squeeze(np.array(pred_pairs))  # [N, 2]
+        val_acc = 100 * np.equal(val_results[:, 0], val_results[:, 1]).sum() / len(val_results)
+        val_mcc = matthews_corrcoef(val_results[:, 1], val_results[:, 0])
+        val_auc = roc_auc_score(val_results[:, 1], prob_list)
+        print('Test accuracy: %.4f%% MCC: %.4f AUC: %.4f' % (val_acc, val_mcc, val_auc))
+        val_f1 = f1_score(val_results[:, 1], val_results[:, 0])
+        val_precision = precision_score(val_results[:, 1], val_results[:, 0])
+        val_recall = recall_score(val_results[:, 1], val_results[:, 0])
+        print('F1: %.4f Precision: %.4f Recall: %.4f' % (val_f1, val_precision, val_recall))
+
+        # plot ROC curve
+        fpr, tpr, thresholds = roc_curve(val_results[:, 1], prob_list, pos_label=1)
+        plt.figure()
+        plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve (area = %.4f)' % val_auc)
+        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+        plt.xlim([0.0, 1.0])
+        plt.ylim([0.0, 1.05])
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
+        plt.title('Receiver Operating Characteristic')
+        plt.legend(loc="lower right")
+        plt.show()
 
     def save_model(self, epoch, dir="saved"):
-        os
+        os.makedirs(dir, exist_ok=True)
         ckpt = {
             'epoch': epoch,
             'model_state_dict': self.model.state_dict(),
@@ -266,7 +294,7 @@ if __name__ == "__main__":
     model = Model(cfg)
     device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cuda" if torch.cuda.is_available() else "cpu")
     solver = Solver(model, cfg, device=device,
-                    optim=torch.optim.Adam, loss_fn=dirichlet_loss, eval=None)
+                    optim=torch.optim.Adam, loss_fn=cfg.SOLVER.LOSS_FN, eval=None)
 
     solver.train(solver.train_dl, solver.val_dl)
 

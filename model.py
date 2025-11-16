@@ -16,16 +16,29 @@ class ProteinSA(nn.Module): # is this too slow? is ESM-IF1 already contextualise
         output, _ = self.multiheadattention(x, x, x, key_padding_mask=mask)
         return output
 
-class DrugConv(nn.Module): # can afford to be cheap on drug side because UniMol is quite comprehensive
+# class DrugConv(nn.Module): # can afford to be cheap on drug side because UniMol is quite comprehensive
+#     def __init__(self, input_dim, hidden_dims, dropout_rate=0.1):
+#         super(DrugConv, self).__init__()
+#         self.conv1 = nn.Conv1d(input_dim, hidden_dims[0], kernel_size=3, padding=1, stride=1)
+#         self.conv2 = nn.Conv1d(hidden_dims[0], hidden_dims[1], kernel_size=3, padding=1, stride=1)
+
+#     def forward(self, x):
+#         x = x.transpose(1, 2)  # (batch_size, input_dim, seq_len)
+#         x = self.conv1(x)
+#         x = self.conv2(x)
+#         x = x.transpose(1, 2)  # (batch_size, seq_len, hidden_dim)
+#         return x
+
+class DrugConv(nn.Module):
     def __init__(self, input_dim, hidden_dims, dropout_rate=0.1):
         super(DrugConv, self).__init__()
-        self.conv1 = nn.Conv1d(input_dim, hidden_dims[0], kernel_size=3, padding=1)
-        self.conv2 = nn.Conv1d(hidden_dims[0], hidden_dims[1], kernel_size=3, padding=1)
+        self.conv1 = nn.Conv1d(512, 512, kernel_size=3, padding=1, stride=1)
+        self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self, x):
         x = x.transpose(1, 2)  # (batch_size, input_dim, seq_len)
-        x = self.conv1(x)
-        x = self.conv2(x)
+        x = F.relu(self.conv1(x))
+        x = self.dropout(x)
         x = x.transpose(1, 2)  # (batch_size, seq_len, hidden_dim)
         return x
 
@@ -75,7 +88,8 @@ class MLP(nn.Module):
         self.fc2 = nn.Linear(hidden_dims[0], hidden_dims[1])
         self.fc3 = nn.Linear(hidden_dims[1], hidden_dims[2])
         self.out = nn.Linear(hidden_dims[2], hidden_dims[3])
-        self.dropout = nn.Dropout(dropout_rate)
+        # self.dropout = nn.Dropout(dropout_rate)
+        self.dropout = nn.AlphaDropout(dropout_rate)
 
     def forward(self, x):
         x = nn.SELU()(self.fc1(x))
@@ -85,7 +99,7 @@ class MLP(nn.Module):
         x = nn.SELU()(self.fc3(x))
         x = self.dropout(x)
         x = self.out(x)
-        # x = F.softplus(x) + 1 # !!
+        x = F.softplus(x) + 1 # !!
 
         return x
 
@@ -93,17 +107,17 @@ class Model(nn.Module):
     def __init__(self, cfg):
         super(Model, self).__init__()
         self.protein_sa = ProteinSA(cfg.PROTEIN.EMBEDDING_DIM)
-        # self.drug_conv = DrugConv(cfg.DRUG.EMBEDDING_DIM, cfg.DRUG.CONV_DIMS)
-        self.cross_attention = CrossAttention(cfg.PROTEIN.EMBEDDING_DIM)
-        self.fusion = Fusion(cfg.DRUG.EMBEDDING_DIM, cfg.DRUG.MLP_DIMS, cfg.PROTEIN.EMBEDDING_DIM, cfg.PROTEIN.DIMS)
-        self.mlp = MLP(cfg.MLP.INPUT_DIM, cfg.MLP.DIMS)
+        self.drug_conv = DrugConv(cfg.DRUG.EMBEDDING_DIM, cfg.DRUG.CONV_DIMS)
+        self.cross_attention = CrossAttention(cfg.PROTEIN.EMBEDDING_DIM, dropout_rate=cfg.SOLVER.DROPOUT)
+        self.fusion = Fusion(cfg.DRUG.EMBEDDING_DIM, cfg.DRUG.MLP_DIMS, cfg.PROTEIN.EMBEDDING_DIM, cfg.PROTEIN.DIMS, cfg.SOLVER.DROPOUT)
+        self.mlp = MLP(cfg.MLP.INPUT_DIM, cfg.MLP.DIMS, cfg.SOLVER.DROPOUT)
     def forward(self, protein_emb, drug_emb, protein_mask=None, drug_mask=None, mode="train"):
         # i should be able to easily turn off SA and the drug CNN
         # input is (B, L, D)
         protein_features = self.protein_sa(protein_emb, mask=protein_mask)
         # protein_features = protein_emb  # (B, L, D)
 
-        # drug_features = self.drug_conv(drug_emb)
+        drug_features = self.drug_conv(drug_emb)
         drug_features = drug_emb  # (B, L, D)
         # Both (B, L, D)
         attended_protein_features, attended_drug_features = self.cross_attention(protein_features, drug_features, protein_mask=protein_mask, drug_mask=drug_mask)
@@ -205,6 +219,12 @@ def _test_model_forward():
     print("[Model forward test] Forward pass successful. Output shape:", tuple(out.shape))
 
 if __name__ == "__main__":
+    from config.cfg import get_cfg_defaults
+    model = Model(get_cfg_defaults()).to(device)
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Total parameters: {total_params}")
+    print(f"Trainable parameters: {trainable_params}")
     _test_fusion_module()
     _smoke_test()
     _test_model_forward()
