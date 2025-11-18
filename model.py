@@ -79,17 +79,14 @@ class Fusion(nn.Module): # get fixed length representations and concat
     def __init__(self, drug_embed_dim, drug_hidden_dims, protein_embed_dim, protein_hidden_dims, dropout_rate=0.2):
         super(Fusion, self).__init__()
         # 2 for drug but 1 for protein
-        self.drug_fc1 = nn.Linear(drug_embed_dim, drug_hidden_dims[0])
-        self.drug_fc2 = nn.Linear(drug_hidden_dims[0], drug_hidden_dims[1])
-
-        # self.protein_linear = nn.Sequential(
-        #     nn.Linear(protein_embed_dim, protein_hidden_dims[0]),
-        #     nn.Dropout(dropout_rate),
-        #     nn.ReLU(),
-        #     nn.BatchNorm1d(protein_hidden_dims[0]),
-        # )
-
-        self.protein_linear = nn.Linear(protein_embed_dim, protein_hidden_dims[0])
+        self.drug_linear = nn.Sequential(
+            nn.Linear(drug_embed_dim, drug_hidden_dims[1]),
+            nn.ReLU(),
+        )
+        self.protein_linear = nn.Sequential(
+            nn.Linear(protein_embed_dim, protein_hidden_dims[0]),
+            nn.ReLU(),
+        )
 
     def forward(self, protein_features, drug_features, protein_mask, drug_mask): # TODO: Think about pooling strategies
         # # pooling strategy from evidti
@@ -121,34 +118,65 @@ class Fusion(nn.Module): # get fixed length representations and concat
         else:
             drug_features = drug_features.mean(dim=1)
 
-        drug_features = self.drug_fc1(drug_features)
-        drug_features = self.drug_fc2(drug_features)
+        drug_features = self.drug_linear(drug_features)
         
         # now both drug and protein features are of same dimension of 256
         res = torch.cat((protein_features, drug_features), dim=-1)
         return res
 
-class MLP(nn.Module):
-    def __init__(self, input_dim, hidden_dims, dropout_rate=0.2):
-        super(MLP, self).__init__()
-        self.fc1 = nn.Linear(input_dim, hidden_dims[0])
-        self.fc2 = nn.Linear(hidden_dims[0], hidden_dims[1])
-        self.fc3 = nn.Linear(hidden_dims[1], hidden_dims[2])
-        self.out = nn.Linear(hidden_dims[2], hidden_dims[3])
-        # self.dropout = nn.Dropout(dropout_rate)
-        self.dropout = nn.AlphaDropout(dropout_rate)
 
-    def forward(self, x):
-        x = nn.SELU()(self.fc1(x))
-        x = self.dropout(x)
-        x = nn.SELU()(self.fc2(x))
-        x = self.dropout(x)
-        x = nn.SELU()(self.fc3(x))
-        x = self.dropout(x)
-        x = self.out(x)
-        # x = F.softplus(x) + 1 # !!
+# class Fusion(nn.Module): # get fixed length representations and concat
+#     def __init__(self, drug_embed_dim, drug_hidden_dims, protein_embed_dim, protein_hidden_dims, dropout_rate=0.2):
+#         super(Fusion, self).__init__()
+#         # 2 for drug but 1 for protein
+#         self.drug_fc1 = nn.Linear(drug_embed_dim, drug_hidden_dims[0])
+#         self.drug_fc2 = nn.Linear(drug_hidden_dims[0], drug_hidden_dims[1])
 
-        return x
+#         # self.protein_linear = nn.Sequential(
+#         #     nn.Linear(protein_embed_dim, protein_hidden_dims[0]),
+#         #     nn.Dropout(dropout_rate),
+#         #     nn.ReLU(),
+#         #     nn.BatchNorm1d(protein_hidden_dims[0]),
+#         # )
+
+#         self.protein_linear = nn.Linear(protein_embed_dim, protein_hidden_dims[0])
+
+#     def forward(self, protein_features, drug_features, protein_mask, drug_mask): # TODO: Think about pooling strategies
+#         # # pooling strategy from evidti
+#         # protein_features = torch.mean(protein_features, dim=1)  # mean pooling
+#         # protein_features = self.protein_linear(protein_features) 
+
+#         # # mean pooling for drugs as recommended by unimol
+#         # drug_features = torch.mean(drug_features, dim=1)  # mean pooling
+#         # drug_features = self.drug_fc1(drug_features)
+#         # drug_features = self.drug_fc2(drug_features)
+
+#         if protein_mask is not None:
+#             valid_p = ~protein_mask                      # True where valid
+#             valid_p = valid_p.unsqueeze(-1)              # (B, Lp, 1)
+#             protein_sum = (protein_features * valid_p).sum(dim=1)  # (B, D)
+#             protein_count = valid_p.sum(dim=1).clamp(min=1)        # (B, 1)
+#             protein_features = protein_sum / protein_count
+#         else:
+#             protein_features = protein_features.mean(dim=1)
+
+#         protein_features = self.protein_linear(protein_features)
+
+#         if drug_mask is not None:
+#             valid_d = ~drug_mask                         # True where valid
+#             valid_d = valid_d.unsqueeze(-1)              # (B, Ld, 1)
+#             drug_sum = (drug_features * valid_d).sum(dim=1)        # (B, D)
+#             drug_count = valid_d.sum(dim=1).clamp(min=1)           # (B, 1)
+#             drug_features = drug_sum / drug_count
+#         else:
+#             drug_features = drug_features.mean(dim=1)
+
+#         drug_features = self.drug_fc1(drug_features)
+#         drug_features = self.drug_fc2(drug_features)
+        
+#         # now both drug and protein features are of same dimension of 256
+#         res = torch.cat((protein_features, drug_features), dim=-1)
+#         return res
 
 # class MLP(nn.Module):
 #     def __init__(self, input_dim, hidden_dims, dropout_rate=0.2):
@@ -157,18 +185,40 @@ class MLP(nn.Module):
 #         self.fc2 = nn.Linear(hidden_dims[0], hidden_dims[1])
 #         self.fc3 = nn.Linear(hidden_dims[1], hidden_dims[2])
 #         self.out = nn.Linear(hidden_dims[2], hidden_dims[3])
-#         self.dropout = nn.Dropout(dropout_rate)
-#         self.activation = nn.ReLU()
+#         # self.dropout = nn.Dropout(dropout_rate)
+#         self.dropout = nn.AlphaDropout(dropout_rate)
 
 #     def forward(self, x):
-#         x = self.activation(self.fc1(x))
+#         x = nn.SELU()(self.fc1(x))
 #         x = self.dropout(x)
-#         x = self.activation(self.fc2(x))
+#         x = nn.SELU()(self.fc2(x))
 #         x = self.dropout(x)
-#         x = self.activation(self.fc3(x))
+#         x = nn.SELU()(self.fc3(x))
 #         x = self.dropout(x)
 #         x = self.out(x)
+#         # x = F.softplus(x) + 1 # !!
+
 #         return x
+
+class MLP(nn.Module):
+    def __init__(self, input_dim, hidden_dims, dropout_rate=0.2):
+        super(MLP, self).__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dims[0])
+        self.fc2 = nn.Linear(hidden_dims[0], hidden_dims[1])
+        self.fc3 = nn.Linear(hidden_dims[1], hidden_dims[2])
+        self.out = nn.Linear(hidden_dims[2], hidden_dims[3])
+        self.dropout = nn.Dropout(dropout_rate)
+        self.activation = nn.ReLU()
+
+    def forward(self, x):
+        x = self.activation(self.fc1(x))
+        # x = self.dropout(x)
+        x = self.activation(self.fc2(x))
+        # x = self.dropout(x)
+        x = self.activation(self.fc3(x))
+        # x = self.dropout(x)
+        x = self.out(x)
+        return x
 
 class Model(nn.Module):
     def __init__(self, cfg):
