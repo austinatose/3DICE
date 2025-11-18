@@ -178,31 +178,31 @@ class Fusion(nn.Module): # get fixed length representations and concat
 #         res = torch.cat((protein_features, drug_features), dim=-1)
 #         return res
 
-# class MLP(nn.Module):
-#     def __init__(self, input_dim, hidden_dims, dropout_rate=0.2):
-#         super(MLP, self).__init__()
-#         self.fc1 = nn.Linear(input_dim, hidden_dims[0])
-#         self.fc2 = nn.Linear(hidden_dims[0], hidden_dims[1])
-#         self.fc3 = nn.Linear(hidden_dims[1], hidden_dims[2])
-#         self.out = nn.Linear(hidden_dims[2], hidden_dims[3])
-#         # self.dropout = nn.Dropout(dropout_rate)
-#         self.dropout = nn.AlphaDropout(dropout_rate)
-
-#     def forward(self, x):
-#         x = nn.SELU()(self.fc1(x))
-#         x = self.dropout(x)
-#         x = nn.SELU()(self.fc2(x))
-#         x = self.dropout(x)
-#         x = nn.SELU()(self.fc3(x))
-#         x = self.dropout(x)
-#         x = self.out(x)
-#         # x = F.softplus(x) + 1 # !!
-
-#         return x
-
-class MLP(nn.Module):
+class MLP1(nn.Module):
     def __init__(self, input_dim, hidden_dims, dropout_rate=0.2):
-        super(MLP, self).__init__()
+        super(MLP1, self).__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dims[0])
+        self.fc2 = nn.Linear(hidden_dims[0], hidden_dims[1])
+        self.fc3 = nn.Linear(hidden_dims[1], hidden_dims[2])
+        self.out = nn.Linear(hidden_dims[2], hidden_dims[3])
+        # self.dropout = nn.Dropout(dropout_rate)
+        self.dropout = nn.AlphaDropout(dropout_rate)
+
+    def forward(self, x):
+        x = nn.SELU()(self.fc1(x))
+        x = self.dropout(x)
+        x = nn.SELU()(self.fc2(x))
+        x = self.dropout(x)
+        x = nn.SELU()(self.fc3(x))
+        x = self.dropout(x)
+        x = self.out(x)
+        # x = F.softplus(x) + 1 # !!
+
+        return x
+
+class MLP2(nn.Module):
+    def __init__(self, input_dim, hidden_dims, dropout_rate=0.2):
+        super(MLP2, self).__init__()
         self.fc1 = nn.Linear(input_dim, hidden_dims[0])
         self.fc2 = nn.Linear(hidden_dims[0], hidden_dims[1])
         self.fc3 = nn.Linear(hidden_dims[1], hidden_dims[2])
@@ -227,7 +227,7 @@ class Model(nn.Module):
         self.drug_conv = DrugConv(cfg.DRUG.EMBEDDING_DIM, cfg.DRUG.CONV_DIMS)
         self.cross_attention = CrossAttention(cfg.PROTEIN.EMBEDDING_DIM, dropout_rate=cfg.SOLVER.DROPOUT)
         self.fusion = Fusion(cfg.DRUG.EMBEDDING_DIM, cfg.DRUG.MLP_DIMS, cfg.PROTEIN.EMBEDDING_DIM, cfg.PROTEIN.DIMS, cfg.SOLVER.DROPOUT)
-        self.mlp = MLP(cfg.MLP.INPUT_DIM, cfg.MLP.DIMS, cfg.SOLVER.DROPOUT)
+        self.mlp = MLP1(cfg.MLP.INPUT_DIM, cfg.MLP.DIMS, cfg.SOLVER.DROPOUT)
     def forward(self, protein_emb, drug_emb, protein_mask=None, drug_mask=None, mode="train"):
         # i should be able to easily turn off SA and the drug CNN
         # input is (B, L, D)
