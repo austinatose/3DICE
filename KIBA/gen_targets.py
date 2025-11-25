@@ -1,7 +1,7 @@
 import re
 
-input_path = "../data/Davis-KIBA/kiba.txt"
-output_path = "../targets.csv"
+input_path = "data/Davis-KIBA/kiba.txt"
+output_path = "lists/KIBA/KIBA_targets.csv"
 
 # Regex for UniProt accessions (Swiss-Prot/TrEMBL primary):
 UNIPROT_RE = re.compile(r"""
