@@ -1,4 +1,4 @@
-drugbank_id,uniprot_id,interaction
+drug_id,uniprot_id,interaction
 DB11853,P30968,1
 DB00467,Q08209,0
 DB00696,P60568,0
