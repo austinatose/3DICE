@@ -471,7 +471,7 @@ def main():
         out_folder = os.path.join(args.out_dir, acc)
         # Skip if the UniProt folder already exists and contains any files
         if os.path.isdir(out_folder) and any(os.scandir(out_folder)):
-            # print(f"Skipping {acc}: folder already exists with files at {out_folder}")
+            print(f"Skipping {acc}: folder already exists with files at {out_folder}")
             continue
 
         r = process_one(

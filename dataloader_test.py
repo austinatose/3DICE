@@ -1,18 +1,18 @@
 import torch
 from torch.utils.data import DataLoader
-from dataset import MyDataset 
+from dataset import MyDataset, KIBADataset
 from dataset import collate_fn
 import os
 
 # --- CONFIG --- #
-csv_path = "lists/train.csv"               # your CSV file
+csv_path = "lists/KIBA/KIBA_pairs.csv"               # your CSV file
 protein_dir = "embeddings"         # folder with per-protein .pt files
-drug_dir = "drug/embeddings_atomic"               # folder with per-drug .pt files
+drug_dir = "drug/embeddings_atomic_KIBA"               # folder with per-drug .pt files
 batch_size = 4
 num_workers = 0
 
 # --- LOAD DATASET --- #
-ds = MyDataset(csv_path, protein_dir, drug_dir)
+ds = KIBADataset(csv_path, protein_dir, drug_dir)
 print(f"Dataset loaded. Total samples: {len(ds)}")
 
 # Peek one item
@@ -31,7 +31,7 @@ print("\nIterating a few batches...")
 for i, batch in enumerate(dl):
     print(f"\nBatch {i+1}")
     for k, v in batch.items():
-        if k in ["protein_mask", "drug_mask", "label", "uniprot_id", "drugbank_id", "protein_lens", "drug_lens", "protein_mask", "drug_mask", "protein_emb", "drug_emb"]:
+        if k in ["protein_mask", "drug_mask", "label", "uniprot_id", "drug_id", "protein_lens", "drug_lens", "protein_mask", "drug_mask", "protein_emb", "drug_emb"]:
             print(f"  {k}: {v}")
         else:
             print(f"  {k}: {tuple(v.shape)}, dtype={v.dtype}")
@@ -44,7 +44,7 @@ for i in random.sample(range(len(ds)), 5):
     item = ds[i]
     print("idx:", i)
     print("  protein_id:", item["uniprot_id"])
-    print("  drug_id:", item["drugbank_id"])
+    print("  drug_id:", item["drug_id"])
     print("  label:", item["label"])
     print("  protein_emb shape:", item["protein_emb"].shape)
     print("  drug_emb shape:", item["drug_emb"].shape)
@@ -86,7 +86,7 @@ for i in indices:
     labels.append(int(item["label"]))
 
     print(f"idx {i}:")
-    print(f"  protein_id: {item['uniprot_id']}, drug_id: {item['drugbank_id']}, label: {item['label']}")
+    print(f"  protein_id: {item['uniprot_id']}, drug_id: {item['drug_id']}, label: {item['label']}")
     print(f"  protein_emb: shape={tuple(prot.shape)}, mean={prot.mean():.4f}, std={prot.std():.4f}")
     print(f"  drug_emb   : shape={tuple(drug.shape)}, mean={drug.mean():.4f}, std={drug.std():.4f}")
     print(f"  protein hash: {prot_hashes[-1]}")
