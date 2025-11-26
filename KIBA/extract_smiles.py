@@ -13,7 +13,7 @@ from rdkit.Chem import PandasTools
 # We will extract: drug_id, uniprot_id, smiles, sequence (if present), value.
 
 input_path = "data/Davis-KIBA/kiba.txt"  # adjust if needed
-output_path = "lists/KIBA/KIBA_pairs.csv"
+output_path = "lists/KIBA/KIBA_drugs.csv"
 
 def parse_kiba_line(line: str):
     line = line.strip()
@@ -52,13 +52,13 @@ def parse_kiba_line(line: str):
         interaction = 0
 
     return {
-        "uniprot_id": uniprot_id,
+        # "uniprot_id": uniprot_id,
         "drug_id": drug_id,
         
-        # "smiles": smiles,
+        "smiles": smiles,
         # "sequence": sequence,
         # "kiba_value": value,
-        "interaction": interaction
+        # "interaction": interaction
     }
 
 
@@ -80,7 +80,7 @@ def main():
         return
 
     df = pd.DataFrame(records)
-    # df = df.drop_duplicates(subset="smiles")
+    df = df.drop_duplicates(subset="drug_id")
 
     # Attach RDKit molecule column if you want to inspect in a notebook
     # PandasTools.AddMoleculeColumnToFrame(df, smilesCol="smiles", molCol="ROMol", includeFingerprints=False)

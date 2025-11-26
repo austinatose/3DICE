@@ -114,7 +114,9 @@ class MyDataset(Dataset):
         label = int(self.labels[idx])
 
         protein_emb = self._get_prot(uniprot_id)  # (L_p, d)
+        protein_emb = protein_emb[:-1]  # remove SEP
         drug_emb = self._get_drug(drug_id)    # (L_d, d)
+        drug_emb = drug_emb[:-1]  # remove SEP
 
         return {
             "protein_emb": protein_emb,
