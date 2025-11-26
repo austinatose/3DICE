@@ -9,7 +9,7 @@ from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
 import matplotlib.pyplot as plt
 
 from config.cfg import get_cfg_defaults
-from dataset import MyDataset, collate_fn
+from dataset import MyDataset, collate_fn, KIBADataset
 
 from model import Model
 
@@ -93,12 +93,12 @@ class Solver:
         # self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optim, mode='min', factor=0.5, patience=5)  # FIXME
 
         # use pre-split data first, then implement k-fold later
-        self.train_ds = MyDataset(cfg.DATA.TRAIN_CSV_PATH, cfg.DATA.PROTEIN_DIR, cfg.DATA.DRUG_DIR)
+        self.train_ds = KIBADataset(cfg.DATA.TRAIN_CSV_PATH, cfg.DATA.PROTEIN_DIR, cfg.DATA.DRUG_DIR)
         self.train_dl = DataLoader(self.train_ds, batch_size=cfg.SOLVER.BATCH_SIZE, shuffle=True, num_workers=0, collate_fn=collate_fn, drop_last=True)
         
-        self.test_ds = MyDataset(cfg.DATA.TEST_CSV_PATH, cfg.DATA.PROTEIN_DIR, cfg.DATA.DRUG_DIR)
+        self.test_ds = KIBADataset(cfg.DATA.TEST_CSV_PATH, cfg.DATA.PROTEIN_DIR, cfg.DATA.DRUG_DIR)
         self.test_dl = DataLoader(self.test_ds, batch_size=cfg.SOLVER.BATCH_SIZE, shuffle=True, num_workers=0, collate_fn=collate_fn, drop_last=False)
-        self.val_ds = MyDataset(cfg.DATA.VAL_CSV_PATH, cfg.DATA.PROTEIN_DIR, cfg.DATA.DRUG_DIR)
+        self.val_ds = KIBADataset(cfg.DATA.VAL_CSV_PATH, cfg.DATA.PROTEIN_DIR, cfg.DATA.DRUG_DIR)
         self.val_dl = DataLoader(self.val_ds, batch_size=cfg.SOLVER.BATCH_SIZE, shuffle=True, num_workers=0, collate_fn=collate_fn, drop_last=False)
 
         self.loss_fn = dirichlet_loss if loss_fn == "dirichlet_loss" else F.cross_entropy
@@ -204,7 +204,7 @@ class Solver:
         bk_list = []        # belief = (alpha - 1) / sum(alpha)
         label_list = []
         uniprot_ids = []
-        drugbank_ids = []
+        drug_ids = []
 
         for _, batch in enumerate(data_loader):
             labels = batch["label"].to(self.device)                    # (B,)
@@ -259,10 +259,10 @@ class Solver:
                 bk_list.append(belief[i])
 
             uniprot_ids.extend(batch["uniprot_id"])                     # list[str]
-            drugbank_ids.extend(batch["drugbank_id"])                   # list[str]
+            drug_ids.extend(batch["drug_id"])                   # list[str]
 
         pred_pairs = np.vstack(pred_pairs) if len(pred_pairs) else np.zeros((0,2), dtype=int)
-        return uniprot_ids, drugbank_ids, pred_pairs, conf_list, conf_list, prob_list, ev_list, bk_list
+        return uniprot_ids, drug_ids, pred_pairs, conf_list, conf_list, prob_list, ev_list, bk_list
 
     def train(self, train_loader, val_loader):
         no_improve_epochs = 0 # TODO
@@ -320,7 +320,7 @@ class Solver:
 
     def evaluate(self, data_loader):
         self.model.eval()
-        uniprot_ids, drugbank_ids, pred_pairs, conf_list, conf_list, prob_list, ev_list, bk_list = self.predict_test(data_loader)
+        uniprot_ids, drug_ids, pred_pairs, conf_list, conf_list, prob_list, ev_list, bk_list = self.predict_test(data_loader)
 
         val_results = np.squeeze(np.array(pred_pairs))  # [N, 2]
         val_acc = 100 * np.equal(val_results[:, 0], val_results[:, 1]).sum() / len(val_results)
