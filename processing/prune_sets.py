@@ -12,8 +12,8 @@ import pandas as pd
 MAX_PROT_LEN = 700
 MAX_DRUG_LEN = 200
 
-PRUNE_INPUT_PATH = "lists/train.csv"
-PRUNE_OUTPUT_PATH = "lists/train_pruned.csv"
+PRUNE_INPUT_PATH = "lists/val_nocomplex.csv"
+PRUNE_OUTPUT_PATH = "lists/val_nocomplex_pruned.csv"
 DRUG_CHAIN_PATH = "lists/pairs_raw.csv"
 PROT_CHAIN_PATH = "other/cache/uniprot_sequences.csv"
 
@@ -35,7 +35,7 @@ def get_drug_chain(drug_id: str, drug_df: pd.DataFrame) -> str:
 
 for index, row in tqdm(input_df.iterrows(), total=input_df.shape[0]):
     uniprot_id = row["uniprot_id"]
-    drug_id = row["drug_id"]
+    drug_id = row["drugbank_id"]
 
     prot_chain = get_prot_chain(uniprot_id, prot_df)
     drug_chain = get_drug_chain(drug_id, drug_df)
@@ -45,3 +45,5 @@ for index, row in tqdm(input_df.iterrows(), total=input_df.shape[0]):
 
 input_df.reset_index(drop=True, inplace=True)
 input_df.to_csv(PRUNE_OUTPUT_PATH, index=False)
+
+# %%
