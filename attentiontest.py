@@ -98,7 +98,7 @@ plt.imshow(attn_p, aspect="auto", interpolation="nearest")
 plt.colorbar(label="Attention weight")
 plt.xlabel("Drug atoms")
 plt.ylabel("Protein residues")
-plt.title("Protein queries → drug atoms")
+plt.title(f"{protein_id} Protein queries → drug atoms {drug_id}")
 
 # x-axis: label each column by atom symbol
 x_positions = np.arange(attn_p.shape[1])
@@ -115,7 +115,7 @@ plt.imshow(attn_d, aspect="auto", interpolation="nearest")
 plt.colorbar(label="Attention weight")
 plt.xlabel("Protein residues")
 plt.ylabel("Drug atoms")
-plt.title("Drug queries → protein residues")
+plt.title(f"{drug_id} Drug queries → protein residues {protein_id}")
 
 # y-axis: label each row by atom symbol
 y_positions = np.arange(attn_d.shape[0])

@@ -8,6 +8,6 @@ from tqdm import tqdm
 import torch
 from esm.inverse_folding.util import load_coords
 
-coords, seq = load_coords(str("structures/P46781/5VYC_J1.cif"), chain="J1")
+coords, seq = load_coords(str("structures/Q02127/4OQV_A.cif"), chain="A")
 print(coords, seq)
 print(f"Sequence length: {len(seq)}")

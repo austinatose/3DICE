@@ -12,8 +12,8 @@ import pandas as pd
 MAX_PROT_LEN = 700
 MAX_DRUG_LEN = 200
 
-PRUNE_INPUT_PATH = "lists/val_nocomplex.csv"
-PRUNE_OUTPUT_PATH = "lists/val_nocomplex_pruned.csv"
+PRUNE_INPUT_PATH = "lists/train_nocomplex.csv"
+PRUNE_OUTPUT_PATH = "lists/train_nocomplex_ss.csv"
 DRUG_CHAIN_PATH = "lists/pairs_raw.csv"
 PROT_CHAIN_PATH = "other/cache/uniprot_sequences.csv"
 

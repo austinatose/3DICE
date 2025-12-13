@@ -12,6 +12,8 @@ import logging
 import torch
 if torch.backends.mps.is_available():
     device = torch.device("mps")
+elif torch.cuda.is_available():
+    device = torch.device("cuda")
 else:
     device = torch.device("cpu")
 
@@ -27,8 +29,8 @@ import contextlib, io
 f_out = io.StringIO()
 f_err = io.StringIO()
 
-CSV_PATH = "lists/KIBA/KIBA_drugs.csv"
-OUTPUT_DIR = "drug/embeddings_atomic_KIBA"
+CSV_PATH = "lists/positive_pairs.csv"
+OUTPUT_DIR = "drug/embeddings_atomic"
 
 # iterate over every smiles in the csv and get unimol representation
 
@@ -45,7 +47,7 @@ def main():
     # unimol_reprs = clf.get_repr(CSV_PATH)
     for i, (drug_id, smi) in enumerate(tqdm(merged_list)):
         # skip existing files
-        if os.path.exists(f"{OUTPUT_DIR}/{drug_id}.pt"):
+        if os.path.exists(f"{OUTPUT_DIR}/{drug_id}_unimol.pt"):
             continue
         with contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_err):
             atomic_reprs = clf.get_repr(smi, return_atomic_reprs=True)

@@ -165,7 +165,7 @@ class CrossAttention(nn.Module): # refer to CAT-DTI
         )
         self.dropout = nn.Dropout(dropout_rate)
 
-    def forward(self, protein_features, drug_features, protein_mask=None, drug_mask=None):
+    def forward(self, protein_features, drug_features, protein_mask=None, drug_mask=None, return_attention=False):
         attended_protein_features, attentionp = self.CAp(self.ln_p1(protein_features), drug_features, drug_features, key_padding_mask=drug_mask)
         protein_features = protein_features + self.dropout(attended_protein_features)
         protein_features = protein_features + self.dropout(self.ff_p(self.ln_p2(protein_features)))
@@ -173,6 +173,9 @@ class CrossAttention(nn.Module): # refer to CAT-DTI
         attended_drug_features, attentiond = self.CAd(self.ln_d1(drug_features), protein_features, protein_features, key_padding_mask=protein_mask)
         drug_features = drug_features + self.dropout(attended_drug_features)
         drug_features = drug_features + self.dropout(self.ff_d(self.ln_d2(drug_features)))
+
+        if return_attention:
+            return protein_features, drug_features, attentionp, attentiond
 
         return protein_features, drug_features
 
@@ -450,6 +453,32 @@ class MLP2(nn.Module):
         # x = F.softplus(x) + 1 # !!
         return x
 
+class MLP3(nn.Module):
+    def __init__(self, input_dim, hidden_dims, dropout_rate=0.2):
+        super(MLP3, self).__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dims[0])
+        self.fc2 = nn.Linear(hidden_dims[0], hidden_dims[1])
+        self.fc3 = nn.Linear(hidden_dims[1], hidden_dims[2])
+        self.fc4 = nn.Linear(hidden_dims[2], hidden_dims[3])
+        self.fc5 = nn.Linear(hidden_dims[3], hidden_dims[4])
+        self.out = nn.Linear(hidden_dims[4], hidden_dims[5])
+        self.dropout = nn.Dropout(dropout_rate)
+        self.activation = nn.ReLU()
+
+    def forward(self, x):
+        x = self.activation(self.fc1(x))
+        x = self.dropout(x)
+        x = self.activation(self.fc2(x))
+        x = self.dropout(x)
+        x = self.activation(self.fc3(x))
+        x = self.dropout(x)
+        x = self.activation(self.fc4(x))
+        x = self.dropout(x)
+        x = self.activation(self.fc5(x))
+        x = self.out(x)
+        # x = F.softplus(x) + 1 # !!
+        return x
+
 class Model(nn.Module):
     def __init__(self, cfg):
         super(Model, self).__init__()
@@ -460,7 +489,7 @@ class Model(nn.Module):
         self.cross_attention = CrossAttention(cfg.PROTEIN.EMBEDDING_DIM, dropout_rate=cfg.SOLVER.DROPOUT, num_heads=4)
         self.fusion = FusionNew(cfg.DRUG.EMBEDDING_DIM, cfg.DRUG.MLP_DIMS, cfg.PROTEIN.EMBEDDING_DIM, cfg.PROTEIN.MLP_DIMS, cfg.SOLVER.DROPOUT)
         self.mlp = MLP2(cfg.MLP.INPUT_DIM, cfg.MLP.DIMS, cfg.SOLVER.DROPOUT)
-    def forward(self, protein_emb, drug_emb, protein_mask=None, drug_mask=None, mode="train"):
+    def forward(self, protein_emb, drug_emb, protein_mask=None, drug_mask=None, mode="train", return_attention=False):
         # i should be able to easily turn off SA and the drug CNN
         # input is (B, L, D)
         protein_features = self.protein_sa(protein_emb, mask=protein_mask)
@@ -470,14 +499,20 @@ class Model(nn.Module):
         # drug_features = self.drug_sa(drug_emb, mask=drug_mask)
         drug_features = self.drug_cnn(drug_emb, mask=drug_mask)  # (B, L, D)
         # Both (B, L, D)
-        attended_protein_features, attended_drug_features = self.cross_attention(protein_features, drug_features, protein_mask=protein_mask, drug_mask=drug_mask)
+        if return_attention:
+            attended_protein_features, attended_drug_features, attentionp, attentiond = self.cross_attention(protein_features, drug_features, protein_mask=protein_mask, drug_mask=drug_mask, return_attention=True)
+        else:
+            attended_protein_features, attended_drug_features = self.cross_attention(protein_features, drug_features, protein_mask=protein_mask, drug_mask=drug_mask, return_attention=False)
         # attended_protein_features = protein_features
         # attended_drug_features = drug_features
         fused_features = self.fusion(attended_protein_features, attended_drug_features, protein_mask=protein_mask, drug_mask=drug_mask)
         # at this point, shape of (B, D)
         output = self.mlp(fused_features)
 
-        return output
+        if return_attention:
+            return output, attentionp, attentiond
+        else:
+            return output
     
 class stdModel(nn.Module):
     def __init__(self, cfg):
