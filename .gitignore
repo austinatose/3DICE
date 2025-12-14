@@ -9,4 +9,6 @@
 /saved
 /.vscode
 /other/uniprot_fasta
-/lists
+/lists/mf_test.csv
+/lists/mf_train.csv
+/lists/mf_val.csv
