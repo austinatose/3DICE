@@ -60,7 +60,7 @@ class ProteinSAnew(nn.Module):
         x = x + self.dropout(ff_out)
 
         return x
-    
+
 # class DrugConv(nn.Module): # can afford to be cheap on drug side because UniMol is quite comprehensive
 #     def __init__(self, input_dim, hidden_dims, dropout_rate=0.1):
 #         super(DrugConv, self).__init__()
@@ -482,7 +482,14 @@ class MLP3(nn.Module):
 class Model(nn.Module):
     def __init__(self, cfg):
         super(Model, self).__init__()
-        self.protein_sa = ProteinSAnew(cfg.PROTEIN.EMBEDDING_DIM, num_heads=4, dropout_rate=cfg.SOLVER.DROPOUT)
+        # self.protein_sa = ProteinSAnew(cfg.PROTEIN.EMBEDDING_DIM, num_heads=4, dropout_rate=cfg.SOLVER.DROPOUT)
+        self.protein_sa = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(
+                d_model=cfg.PROTEIN.EMBEDDING_DIM,
+                nhead=4,
+                dropout=cfg.SOLVER.DROPOUT,
+                batch_first=True,
+            ), num_layers=2)
         # self.drug_sa = DrugSA(cfg.DRUG.EMBEDDING_DIM)
         # self.drug_conv = DrugConv(cfg.DRUG.EMBEDDING_DIM, cfg.DRUG.CONV_DIMS)
         self.drug_cnn = DrugCNN(cfg.DRUG.EMBEDDING_DIM, hidden_dim=cfg.DRUG.EMBEDDING_DIM, num_layers=2, dropout_rate=cfg.SOLVER.DROPOUT)
