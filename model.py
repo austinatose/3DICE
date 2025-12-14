@@ -165,10 +165,14 @@ class CrossAttention(nn.Module): # refer to CAT-DTI
         )
         self.dropout = nn.Dropout(dropout_rate)
 
-    def forward(self, protein_features, drug_features, protein_mask=None, drug_mask=None, return_attention=False):
+    def forward(self, protein_features, drug_features, protein_mask, drug_mask, return_attention=False):
         attended_protein_features, attentionp = self.CAp(self.ln_p1(protein_features), drug_features, drug_features, key_padding_mask=drug_mask)
         protein_features = protein_features + self.dropout(attended_protein_features)
         protein_features = protein_features + self.dropout(self.ff_p(self.ln_p2(protein_features)))
+
+        protein_features = protein_features.masked_fill(
+            protein_mask.unsqueeze(-1), 0.0
+        )
 
         attended_drug_features, attentiond = self.CAd(self.ln_d1(drug_features), protein_features, protein_features, key_padding_mask=protein_mask)
         drug_features = drug_features + self.dropout(attended_drug_features)
