@@ -9,7 +9,7 @@ from config.cfg import get_cfg_defaults
 from solver import Solver
 
 # ---- config ----
-CKPT_PATH = "best_models/model_-3459988036641379738_epoch_39.pt"  # replace XX with the epoch you want
+CKPT_PATH = "saved/model_-3459988036641379738_epoch_39.pt"  # replace XX with the epoch you want
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
 # ---- load checkpoint ----
@@ -22,7 +22,7 @@ model.to(DEVICE)
 
 solver = Solver(model, cfg, device=DEVICE, optim=torch.optim.Adam, loss_fn=cfg.SOLVER.LOSS_FN, eval=None)
 
-test_ds = KIBADataset(cfg.DATA.TEST_CSV_PATH, cfg.DATA.PROTEIN_DIR, cfg.DATA.DRUG_DIR)
+test_ds = MyDataset('lists/mf_val.csv', cfg.DATA.PROTEIN_DIR, cfg.DATA.DRUG_DIR)
 test_dl = DataLoader(test_ds, batch_size=cfg.SOLVER.BATCH_SIZE, shuffle=True, num_workers=0, collate_fn=collate_fn, drop_last=False)
 
 solver.evaluate(test_dl)
