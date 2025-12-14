@@ -364,6 +364,7 @@ if __name__ == "__main__":
                     optim=torch.optim.Adam, loss_fn=cfg.SOLVER.LOSS_FN, eval=None)
 
     solver.train(solver.train_dl, solver.val_dl)
+    # evaluate on best model (starting epoch - 10, or latest entry in best_models)
 
     # dirichlet loss test   
     # B = 4
