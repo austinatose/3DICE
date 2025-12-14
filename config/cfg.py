@@ -29,7 +29,7 @@ _C.SOLVER.LOSS_FN = "cross_entropy"
 _C.DATA = CN()
 _C.DATA.TEST_CSV_PATH = "lists/mf_test.csv"
 _C.DATA.TRAIN_CSV_PATH = "lists/mf_train.csv"
-_C.DATA.VAL_CSV_PATH = "lists/mf_   val.csv"
+_C.DATA.VAL_CSV_PATH = "lists/mf_val.csv"
 _C.DATA.PROTEIN_DIR = "embeddings"
 _C.DATA.DRUG_DIR = "drug/embeddings_atomic/"
 
