@@ -493,7 +493,8 @@ class Model(nn.Module):
                 nhead=4,
                 dropout=cfg.SOLVER.DROPOUT,
                 batch_first=True,
-            ), num_layers=2)
+                activation="gelu",
+            ), num_layers=4)
         # self.drug_sa = DrugSA(cfg.DRUG.EMBEDDING_DIM)
         # self.drug_conv = DrugConv(cfg.DRUG.EMBEDDING_DIM, cfg.DRUG.CONV_DIMS)
         # self.drug_cnn = DrugCNN(cfg.DRUG.EMBEDDING_DIM, hidden_dim=cfg.DRUG.EMBEDDING_DIM, num_layers=2, dropout_rate=cfg.SOLVER.DROPOUT)
@@ -503,11 +504,12 @@ class Model(nn.Module):
                 nhead=4,
                 dropout=cfg.SOLVER.DROPOUT,
                 batch_first=True,
-            ), num_layers=2)
+                activation="gelu",
+            ), num_layers=4)
         self.cross_attention = CrossAttention(cfg.PROTEIN.EMBEDDING_DIM, dropout_rate=cfg.SOLVER.DROPOUT, num_heads=4)
 
         self.fusion = FusionNew(cfg.DRUG.EMBEDDING_DIM, cfg.DRUG.MLP_DIMS, cfg.PROTEIN.EMBEDDING_DIM, cfg.PROTEIN.MLP_DIMS, cfg.SOLVER.DROPOUT)
-        self.mlp = MLP2(cfg.MLP.INPUT_DIM, cfg.MLP.DIMS, cfg.SOLVER.DROPOUT)
+        self.mlp = MLP3(cfg.MLP.INPUT_DIM, cfg.MLP.DIMS, cfg.SOLVER.DROPOUT)
     def forward(self, protein_emb, drug_emb, protein_mask=None, drug_mask=None, mode="train", return_attention=False):
         # i should be able to easily turn off SA and the drug CNN
         # input is (B, L, D)
