@@ -309,7 +309,7 @@ class Solver:
             with open(os.path.join("logs", f"training_log_{date}.csv"), "a") as f:
                 f.write(f"{epoch+1},{train_loss:.6f},{train_acc:.4f},{val_acc:.4f},{train_mcc:.4f},{val_mcc:.4f},{val_auc:.4f},{TP},{TN},{FP},{FN},{epoch_time:.2f}\n")
 
-            if no_improve_epochs >= 10:
+            if no_improve_epochs >= 15:
                 print("No improvement in validation accuracy for 10 epochs, stopping early.")
                 break
         
