@@ -8,9 +8,12 @@ from solver import Solver
 import matplotlib.pyplot as plt
 import numpy as np
 
+import py3Dmol
+
 # ---- config ----
-CKPT_PATH = "saved/model_-3459988036641379738_epoch_39.pt"  # replace XX with the epoch you want
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+CKPT_PATH = "saved/model_8869200462140314577_epoch_23.pt"  # replace XX with the epoch you want
+# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+DEVICE = "cpu"
 
 # ---- load checkpoint ----
 ckpt = torch.load(CKPT_PATH, map_location=DEVICE, weights_only=False)
@@ -41,6 +44,8 @@ print(np.array(drug_rep["atomic_reprs"]))  # (N_atoms, 512)
 print(np.array(drug_rep["atomic_reprs"]).shape)  # (N_atoms, 512)
 print(np.array(drug_rep["atomic_symbol"]))  # (N_atoms, 512)
 print(np.array(drug_rep["atomic_symbol"]).shape)  # (N_atoms, 512)
+print(np.array(drug_rep["atomic_coords"]))  # (N_atoms, 512)
+print(np.array(drug_rep["atomic_coords"]).shape)  # (N_atoms, 512)
 
 model.eval()
 with torch.no_grad():
@@ -84,6 +89,7 @@ elif atom_labels.shape[0] < Ld:
 # choose an atom index to highlight (0-based). Change this depending on which atom you care about.
 highlight_atom_idx = 0
 highlight_atom_idx = max(0, min(highlight_atom_idx, Ld - 1))
+# (later we may trim SEP for rendering; keep highlight index within non-SEP atoms)
 
 # ---- symmetric interaction map (residue ↔ atom) ----
 # attn_p: (Lp, Ld) protein queries → drug tokens
@@ -145,3 +151,101 @@ plt.tight_layout()
 plt.show()
 
 #TODO: pre extract protein chains so i can use them for this purpose
+
+
+# ---- 3D render drug atoms with py3Dmol (XYZ) ----
+view = py3Dmol.view(width=800, height=800)
+
+# coords should be (N, 3), symbols should be (N,)
+atomic_coords = np.array(drug_rep["atomic_coords"], dtype=float)
+
+# Uni-Mol sometimes stores coords with a leading batch dimension, e.g. (1, N, 3)
+# or other extra singleton dims. Squeeze them safely.
+if atomic_coords.ndim >= 3:
+    atomic_coords = np.squeeze(atomic_coords)
+
+# After squeeze, ensure we have either (N, 3) or something we can reduce to it.
+# If coords are (N, 3, 3) (e.g., multiple atom reference points), take the central atom (index 1).
+if atomic_coords.ndim == 3 and atomic_coords.shape[-2:] == (3, 3):
+    atomic_coords = atomic_coords[:, 1, :]
+
+# Symbols sometimes come as bytes / numpy scalars; normalize to clean strings early
+atomic_symbols_raw = np.array(drug_rep["atomic_symbol"], dtype=object).reshape(-1)
+atomic_symbols = np.array([str(s).strip() for s in atomic_symbols_raw], dtype=object)
+
+# If coords come with an extra trailing dimension or a SEP token, trim consistently.
+# Common Uni-Mol artifacts: an extra "SEP" symbol or an extra coord row.
+N = min(len(atomic_symbols), atomic_coords.shape[0])
+atomic_symbols = atomic_symbols[:N]
+atomic_coords = atomic_coords[:N]
+
+# Drop SEP-like tokens (Uni-Mol variants): 'SEP', '[SEP]', '<SEP>'
+atomic_coords = atomic_coords[:-1]
+atomic_symbols = atomic_symbols[:-1]
+# Align per-atom weights with the rendered atoms.
+# We use the symmetric residue–atom interaction map column-sum as an atom importance score.
+# inter_map is (Lp, Ld) and its columns correspond to the same drug-token axis as atom_labels.
+atom_weights = inter_map.sum(axis=0)  # (Ld,)
+atom_weights = atom_weights[:len(atomic_symbols)]
+
+# Ensure coords are (N, 3)
+if atomic_coords.ndim != 2 or atomic_coords.shape[1] != 3:
+    raise ValueError(
+        "atomic_coords must be shape (N,3) after squeezing; "
+        f"got {atomic_coords.shape}. "
+        "If this is (N,3,3), we try to reduce it above; otherwise inspect drug_rep['atomic_coords']."
+    )
+
+# Build a proper XYZ string: first line = atom count, second = comment
+xyz_lines = [str(len(atomic_symbols)), f"{drug_id[0]} atoms"]
+for sym, (x, y, z) in zip(atomic_symbols, atomic_coords):
+    xyz_lines.append(f"{sym} {x:.6f} {y:.6f} {z:.6f}")
+xyz_str = "\n".join(xyz_lines) + "\n"
+
+print(xyz_str)
+
+view.addModel(xyz_str, "xyz")
+
+#
+# Base style: spheres for all atoms (optionally keep sticks too)
+SPHERE_RADIUS = 0.20  # constant radius for all atoms; tweak to taste
+view.setStyle({"sphere": {"radius": SPHERE_RADIUS}, "stick": {"radius": 0.08}})
+
+# Per-atom styling by weight: larger & more saturated for higher weights
+# Normalize weights safely
+w = np.asarray(atom_weights, dtype=float)
+if w.size == 0:
+    w = np.ones(len(atomic_symbols), dtype=float)
+
+w_min, w_max = float(np.min(w)), float(np.max(w))
+if abs(w_max - w_min) < 1e-12:
+    w_norm = np.zeros_like(w)
+else:
+    w_norm = (w - w_min) / (w_max - w_min)
+
+# Map to colors using a matplotlib colormap (no seaborn)
+import matplotlib
+cmap = matplotlib.cm.get_cmap("viridis")
+
+def rgba_to_hex(rgba):
+    r, g, b, _ = rgba
+    return "#%02x%02x%02x" % (int(r * 255), int(g * 255), int(b * 255))
+
+# Apply sphere overlay per atom (py3Dmol uses 1-based serial indices)
+for i, wn in enumerate(w_norm):
+    # Color only: keep a constant sphere radius for every atom
+    color = rgba_to_hex(cmap(float(wn)))
+    view.addStyle({"serial": i + 1}, {"sphere": {"radius": SPHERE_RADIUS, "color": color}})
+
+# Optional: emphasize one chosen atom on top of the weight styling
+# view.addStyle({"serial": highlight_atom_idx + 1}, {"sphere": {"radius": 0.85, "color": "#ff2d2d"}})
+
+view.zoomTo()
+
+# In a Jupyter notebook, view.show() will display.
+# In a plain Python run, write an HTML file you can open in a browser.
+
+from pathlib import Path
+html_path = Path("drug_view.html").resolve()
+html_path.write_text(view._make_html(), encoding="utf-8")
+print(f"Wrote 3D view to: {html_path}")
