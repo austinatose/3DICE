@@ -12,8 +12,8 @@ import pandas as pd
 MAX_PROT_LEN = 700
 MAX_DRUG_LEN = 200
 
-PRUNE_INPUT_PATH = "lists/train_nocomplex.csv"
-PRUNE_OUTPUT_PATH = "lists/train_nocomplex_ss.csv"
+PRUNE_INPUT_PATH = "../MocFormer/DrugBank_uni_esm2_3B.csv"
+PRUNE_OUTPUT_PATH = "../MocFormer/DrugBank_uni_esm2_3B_safe.csv"
 DRUG_CHAIN_PATH = "lists/pairs_raw.csv"
 PROT_CHAIN_PATH = "other/cache/uniprot_sequences.csv"
 
@@ -33,14 +33,46 @@ def get_drug_chain(drug_id: str, drug_df: pd.DataFrame) -> str:
         return ' '*(MAX_DRUG_LEN) # cook it
     return row.iloc[0]["smiles"]
 
+from pathlib import Path
+
+def check_embed_existence(
+    uniprot_id: str,
+    drug_id: str,
+    uniprot_embedding_path,
+    drug_embedding_path,
+) -> bool:
+    """
+    Protein: folder named <uniprot_id> exists AND contains at least one file
+    Drug: file named <drug_id> exists
+    """
+
+    uniprot_embedding_path = Path(uniprot_embedding_path)
+    drug_embedding_path = Path(drug_embedding_path)
+
+    # ---- protein check: folder exists and not empty ----
+    protein_dir = uniprot_embedding_path / uniprot_id
+    protein_ok = (
+        protein_dir.exists()
+        and protein_dir.is_dir()
+        and any(p.is_file() for p in protein_dir.iterdir())
+    )
+
+    # ---- drug check: file exists ----
+    drug_file = drug_embedding_path / drug_id
+    drug_ok = drug_file.exists() and drug_file.is_file()
+
+    return protein_ok and drug_ok
+
 for index, row in tqdm(input_df.iterrows(), total=input_df.shape[0]):
-    uniprot_id = row["uniprot_id"]
-    drug_id = row["drugbank_id"]
+    # uniprot_id = row["0"]
+    # drug_id = row["1"]
 
-    prot_chain = get_prot_chain(uniprot_id, prot_df)
-    drug_chain = get_drug_chain(drug_id, drug_df)
+    # prot_chain = get_prot_chain(uniprot_id, prot_df)
+    prot_chain = row['Target_sequence']
+    # drug_chain = get_drug_chain(drug_id, drug_df)
+    drug_chain = row['SMILES']
 
-    if len(prot_chain) > MAX_PROT_LEN or len(drug_chain) > MAX_DRUG_LEN:
+    if (len(prot_chain) > MAX_PROT_LEN or len(drug_chain) > MAX_DRUG_LEN) or prot_chain.isspace() or drug_chain.isspace() and check_embed_existence(row['Target_uniprot'], row['Drug_id'], "embeddings", "drugs/embeddings_atomic"):
         input_df.drop(index, inplace=True)
 
 input_df.reset_index(drop=True, inplace=True)

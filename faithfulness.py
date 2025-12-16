@@ -40,6 +40,7 @@ import numpy as np
 
 import torch
 from torch import Tensor
+from tqdm import tqdm
 
 
 Mode = Literal["protein", "drug"]
@@ -367,7 +368,7 @@ class FaithfulnessScorer:
         curves_ours: List[np.ndarray] = []
         curves_rand: List[np.ndarray] = []
 
-        for s in samples:
+        for s in tqdm(samples):
             x, y_ours = self.curve_single(
                 sample=s,
                 mode=mode,
@@ -503,7 +504,57 @@ if __name__ == "__main__":
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--max_samples", type=int, default=64)
     parser.add_argument("--n_random", type=int, default=5)
+    parser.add_argument(
+        "--score_mode",
+        type=str,
+        default="margin",
+        choices=["pos", "neg", "margin", "prob", "entropy", "ce_loss"],
+        help=(
+            "Scalar score used for faithfulness curves. "
+            "pos/neg use class logits, margin=pos-neg, prob=softmax(pos), entropy=H(softmax), "
+            "ce_loss=CrossEntropyLoss(logits,target) (label-dependent)."
+        ),
+    )
     args = parser.parse_args()
+    def _scalar_from_logits(logits: Tensor, score_mode: str, sample: Optional[Sample] = None) -> Tensor:
+        """Convert 2-class logits to a scalar confidence/uncertainty score."""
+        # Ensure shape (..., 2)
+        z = logits
+        if isinstance(z, (tuple, list)):
+            z = z[0]
+        z = z.squeeze()
+        if z.ndim == 1 and z.numel() == 2:
+            z2 = z
+        elif z.ndim >= 2 and z.shape[-1] == 2:
+            z2 = z[..., -2:].squeeze()
+            if z2.ndim > 1:
+                z2 = z2.view(-1, 2)[0]
+        else:
+            raise ValueError(f"Expected 2-class logits; got shape {tuple(z.shape)}")
+
+        z_neg, z_pos = z2[0], z2[1]
+
+        if score_mode == "pos":
+            return z_pos
+        if score_mode == "neg":
+            return z_neg
+        if score_mode == "margin":
+            return z_pos - z_neg
+        if score_mode == "prob":
+            p = torch.softmax(z2, dim=-1)
+            return p[1]
+        if score_mode == "entropy":
+            p = torch.softmax(z2, dim=-1)
+            return -(p * torch.clamp(p, min=1e-12).log()).sum()
+        if score_mode == "ce_loss":
+            if sample is None or sample.meta is None or sample.meta.get("label", None) is None:
+                raise ValueError("ce_loss score_mode requires sample.meta['label'] to be 0/1")
+            y = torch.tensor([int(sample.meta["label"])], device=z2.device, dtype=torch.long)
+            # CrossEntropyLoss expects (N,C)
+            z_batch = z2.view(1, 2)
+            return torch.nn.functional.cross_entropy(z_batch, y, reduction="none")[0]
+
+        raise ValueError(f"Unknown score_mode: {score_mode}")
 
     DEVICE = args.device
 
@@ -575,13 +626,8 @@ if __name__ == "__main__":
 
         preds = preds.squeeze()
 
-# If two logits are returned, take the positive-class logit
-        if preds.ndim == 1 and preds.numel() == 2:
-            preds = preds[1]
-        elif preds.ndim >= 2 and preds.shape[-1] == 2:
-            preds = preds[..., 1].squeeze()
-
-        return preds
+        # Convert 2-class logits to scalar score
+        return _scalar_from_logits(preds, args.score_mode, sample=sample)
 
     @torch.no_grad()
     def forward_with_attn_fn(sample: Sample) -> Tuple[Tensor, np.ndarray, np.ndarray]:
@@ -616,12 +662,7 @@ if __name__ == "__main__":
             return_attention=True,
         )
 
-        score = predictions.squeeze()
-        # If two logits are returned, take the positive-class logit
-        if score.ndim == 1 and score.numel() == 2:
-            score = score[1]
-        elif score.ndim >= 2 and score.shape[-1] == 2:
-            score = score[..., 1].squeeze()
+        score = _scalar_from_logits(predictions, args.score_mode, sample=sample)
 
         # Take batch 0; model uses average_attn_weights=True so there is no head dim.
         attn_p = attentionp[0].detach().cpu().numpy()  # (Lp, Ld)
@@ -638,16 +679,16 @@ if __name__ == "__main__":
     fractions = (0.0, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50)
 
     # ---- Protein-side deletion (ALL / POS / NEG) ----
-    res_p_del_all = scorer.evaluate_dataset(
-        samples=samples,
-        mode="protein",
-        test_type="deletion",
-        fractions=fractions,
-        n_random=args.n_random,
-        seed=0,
-        normalize_to_baseline=True,
-    )
-    plot_curve(res_p_del_all, title="Faithfulness: Protein deletion (ALL, Δlogit)")
+    # res_p_del_all = scorer.evaluate_dataset(
+    #     samples=samples,
+    #     mode="protein",
+    #     test_type="deletion",
+    #     fractions=fractions,
+    #     n_random=args.n_random,
+    #     seed=0,
+    #     normalize_to_baseline=True,
+    # )
+    # plot_curve(res_p_del_all, title=f"Faithfulness: Protein deletion (ALL, Δ{args.score_mode})")
 
     # if len(samples_pos) >= 2:
     #     res_p_del_pos = scorer.evaluate_dataset(
@@ -683,7 +724,7 @@ if __name__ == "__main__":
         seed=0,
         normalize_to_baseline=True,
     )
-    plot_curve(res_d_del_all, title="Faithfulness: Drug deletion (ALL, Δlogit)")
+    plot_curve(res_d_del_all, title=f"Faithfulness: Drug deletion (ALL, Δ{args.score_mode})")
 
     # if len(samples_pos) >= 2:
     #     res_d_del_pos = scorer.evaluate_dataset(

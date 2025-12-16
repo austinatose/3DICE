@@ -496,7 +496,7 @@ class Model(nn.Module):
                 dropout=cfg.SOLVER.DROPOUT,
                 batch_first=True,
                 # activation="gelu",
-            ), num_layers=2)
+            ), num_layers=1)
         # self.drug_sa = DrugSA(cfg.DRUG.EMBEDDING_DIM)
         # self.drug_conv = DrugConv(cfg.DRUG.EMBEDDING_DIM, cfg.DRUG.CONV_DIMS)
         self.drug_cnn = DrugCNN(cfg.DRUG.EMBEDDING_DIM, hidden_dim=cfg.DRUG.EMBEDDING_DIM, num_layers=2, dropout_rate=cfg.SOLVER.DROPOUT)

@@ -81,7 +81,7 @@ STRUCT_ROOT = Path("structures")             # root folder containing your CIF/P
 EMB_ROOT = Path("embeddings")                # where to write outputs
 SAVE_PER_FILE = True                          # save per-structure residue embeddings
 AGGREGATE = False                              # write aggregated global embeddings
-DEVICE = torch.device("cpu")                 # keep CPU for stability
+DEVICE = torch.device("mps")                 # keep CPU for stability
 POOL_STD = False                               # include std pooling (for 1024-D)
 
 # ------------------------------------------------

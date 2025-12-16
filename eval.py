@@ -9,7 +9,7 @@ from config.cfg import get_cfg_defaults
 from solver import Solver
 
 # ---- config ----
-CKPT_PATH = "saved/model_1861479725322744599_epoch_19.pt"  # replace XX with the epoch you want
+CKPT_PATH = "saved/model_-8720872623392666576_epoch_59.pt"  # replace XX with the epoch you want
 # DEVICE = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 DEVICE = torch.device("cpu")
 

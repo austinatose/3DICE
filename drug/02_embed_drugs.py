@@ -29,7 +29,7 @@ import contextlib, io
 f_out = io.StringIO()
 f_err = io.StringIO()
 
-CSV_PATH = "lists/positive_pairs.csv"
+CSV_PATH = "lists/db_train.csv"
 OUTPUT_DIR = "drug/embeddings_atomic"
 
 # iterate over every smiles in the csv and get unimol representation
@@ -40,7 +40,7 @@ def main():
     # smiles = 'CC[C@H](C)[C@H](NC(=O)[C@H](CCC(O)=O)NC(=O)[C@H](CCC(O)=O)NC(=O)[C@H](CC1=CC=CC=C1)NC(=O)[C@H](CC(O)=O)NC(=O)CNC(=O)[C@H](CC(N)=O)NC(=O)CNC(=O)CNC(=O)CNC(=O)CNC(=O)[C@@H]1CCCN1C(=O)[C@H](CCCNC(N)=N)NC(=O)[C@@H]1CCCN1C(=O)[C@H](N)CC1=CC=CC=C1)C(=O)N1CCC[C@H]1C(=O)N[C@@H](CCC(O)=O)C(=O)N[C@@H](CCC(O)=O)C(=O)N[C@@H](CC1=CC=C(O)C=C1)C(=O)N[C@@H](CC(C)C)C(O)=O'
     
     df = pd.read_csv(CSV_PATH)
-    smiles_list = df['smiles'].tolist()
+    smiles_list = df['SMILES'].tolist()
     id_list = df['drug_id'].tolist()
     # merge lists
     merged_list = list(zip(id_list, smiles_list))
